@@ -12,33 +12,31 @@ Eventually support for more CI/CD providers is intended like GitHub Actions, Cir
 
 ## Build Steps
 
-Without having a tool that combines and orchestrates the overall process of running a pipeline locally, this chapter lists the individual steps and commands to run a CI job manually.
+Eventually Fake CI can, and potentially should, be its own dedicated tool.
+But while still validating the overall idea it consists of a few shell scripts.
 
-Eventually this could be taken care of by a dedicated tool.
-But while still validating the overall idea there will be a few manual commands and individual shell scripts that will show how all individual pieces can fit together.
+There are a few manual commands necessary to get it running:
 
 ```
-# build the core image
-docker build -t fake-ci:latest .
+# this alias needs to be defined in your shell
+alias fake-ci=~/<path to>/fake-ci/fake-ci.sh
 
-alias checkout-container=~/development/fake-ci/checkout-container.sh
-alias preparation-container=~/development/fake-ci/preparation-container.sh
-alias job-container=~/development/fake-ci/job-container.sh
-
-# building the checkout container in a project repository
+# with the alias defined navigate to a project directory
+# containing a .gitlab-ci.yml file
 cd <project directory>
-checkout-container
 
-# with the checkout container available the preparation container can be created
-preparation-container
-
-# everyhing up until this point is "generic" in the sense the previous steps
-# prepared all necessary code, so that the job specific image can be used
-# and run with its configured commands.
-
-# this command will simulate running a job with the code from the repository
-job-container
+# From there you can invoke Fake CI
+fake-ci
 ```
+
+The `fake-ci` shell script automatically builds a Docker image it needs in case it's not available yet.
+
+
+### Required Tools
+
+- Docker or Rancher
+- Git
+- macOS (not tested on anything else)
 
 
 ## Concepts
