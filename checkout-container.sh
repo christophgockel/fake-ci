@@ -6,22 +6,24 @@ set -euo pipefail
 # the last `git apply` gets any pending changes so that changes don't have to be committed to be part of the run.
 commands="
 cd /checkout;
-git init --quiet;
+git init;
 git remote add origin /project;
 git fetch origin --quiet;
 git checkout --quiet \${GIT_SHA};
 (cd /project; git diff) | git apply --quiet;
-sh"
+"
 
 docker ps --all --quiet --filter name=fake-ci-checkout | xargs docker rm --force > /dev/null
 
 docker run \
-  --interactive \
   --tty \
   --detach \
   --volume $(pwd):/project \
   --volume /checkout \
-  --env GIT_SHA=$(git rev-parse HEAD) \
   --name fake-ci-checkout \
-  fake-ci:latest \
-  "${commands/$'\n'/}"
+  fake-ci:latest
+
+docker exec \
+  --env GIT_SHA=$(git rev-parse HEAD) \
+  fake-ci-checkout \
+  sh -c "${commands/$'\n'/}"
