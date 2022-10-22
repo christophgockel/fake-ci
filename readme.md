@@ -20,6 +20,12 @@ But while still validating the overall idea there will be a few manual commands 
 ```
 # build the core image
 docker build -t fake-ci:latest .
+
+alias checkout-container=~/development/fake-ci/checkout-container.sh
+
+# building the checkout container in a project repository
+cd <project directory>
+checkout-container
 ```
 
 
