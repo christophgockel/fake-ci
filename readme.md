@@ -10,6 +10,19 @@ While validating the approach I'm focussing on support for GitLab exclusively.
 Eventually support for more CI/CD providers is intended like GitHub Actions, CircleCI and others.
 
 
+## Build Steps
+
+Without having a tool that combines and orchestrates the overall process of running a pipeline locally, this chapter lists the individual steps and commands to run a CI job manually.
+
+Eventually this could be taken care of by a dedicated tool.
+But while still validating the overall idea there will be a few manual commands and individual shell scripts that will show how all individual pieces can fit together.
+
+```
+# build the core image
+docker build -t fake-ci:latest .
+```
+
+
 ## Concepts
 
 Fake CI consists of a family of containers for different tasks that are involved throughout a CI pipeline run.

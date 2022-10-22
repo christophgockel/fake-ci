@@ -1,0 +1,8 @@
+[init]
+defaultBranch = none
+
+[apply]
+whitespace = nowarn
+
+[safe]
+directory = /project
