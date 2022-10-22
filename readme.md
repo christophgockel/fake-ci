@@ -22,10 +22,14 @@ But while still validating the overall idea there will be a few manual commands 
 docker build -t fake-ci:latest .
 
 alias checkout-container=~/development/fake-ci/checkout-container.sh
+alias preparation-container=~/development/fake-ci/preparation-container.sh
 
 # building the checkout container in a project repository
 cd <project directory>
 checkout-container
+
+# with the checkout container available the preparation container can be created
+preparation-container
 ```
 
 
@@ -34,6 +38,7 @@ checkout-container
 Fake CI consists of a family of containers for different tasks that are involved throughout a CI pipeline run.
 
 - **Checkout Containers** initialise the Git repository with the project's code and applies any pending changes to always have the latest code available.
+- **Preparation Containers** take what a Checkout Container has prepared and combines it with data from Artifact and Cache Volumes if required.
 - **Job Containers** run the individual CI jobs on their respective images. Content is shared from the Preparation Container.
 - **Artifact Volumes** store artifacts shared between Job Containers.
 - **Cache Volumes** are similar to Artifact Volumes in that CI pipelines can use caches between jobs to reduce overall runtime and required reprocessing.
