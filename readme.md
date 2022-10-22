@@ -23,6 +23,7 @@ docker build -t fake-ci:latest .
 
 alias checkout-container=~/development/fake-ci/checkout-container.sh
 alias preparation-container=~/development/fake-ci/preparation-container.sh
+alias job-container=~/development/fake-ci/job-container.sh
 
 # building the checkout container in a project repository
 cd <project directory>
@@ -30,6 +31,13 @@ checkout-container
 
 # with the checkout container available the preparation container can be created
 preparation-container
+
+# everyhing up until this point is "generic" in the sense the previous steps
+# prepared all necessary code, so that the job specific image can be used
+# and run with its configured commands.
+
+# this command will simulate running a job with the code from the repository
+job-container
 ```
 
 
