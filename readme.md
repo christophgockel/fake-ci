@@ -1,0 +1,23 @@
+# Fake CI
+
+Run your CI pipelines locally for quicker iterations.
+
+
+## Development Notes
+
+This tool is currently in active development.
+While validating the approach I'm focussing on support for GitLab exclusively.
+Eventually support for more CI/CD providers is intended like GitHub Actions, CircleCI and others.
+
+
+## Concepts
+
+Fake CI consists of a family of containers for different tasks that are involved throughout a CI pipeline run.
+
+- **Checkout Containers** initialise the Git repository with the project's code and applies any pending changes to always have the latest code available.
+- **Job Containers** run the individual CI jobs on their respective images. Content is shared from the Preparation Container.
+- **Artifact Volumes** store artifacts shared between Job Containers.
+- **Cache Volumes** are similar to Artifact Volumes in that CI pipelines can use caches between jobs to reduce overall runtime and required reprocessing.
+
+The main difference between artifacts and caches are that caches are byproduct of CI jobs to support additional jobs or subsequent pipeline runs.
+Whereas artifacts are explicit outputs from a job like a final JAR file for a Java project.
