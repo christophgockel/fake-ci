@@ -14,6 +14,7 @@ docker run \
   --tty \
   --detach \
   --volumes-from fake-ci-checkout \
+  --volume fake-ci-artifacts:/artifacts \
   --volume /job \
   --name fake-ci-preparation \
   fake-ci:latest
