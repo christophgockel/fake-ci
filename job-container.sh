@@ -9,12 +9,11 @@ commands_to_run="
   cd /job;
 "
 
-script_lines=$(yq ".${job_name}.script" .gitlab-ci.yml)
+script_lines=$(yq ".${job_name}.script[]" .gitlab-ci.yml)
 
 while IFS= read -r line
 do
-  # stripping the first two characters from the YAML list elements, i.e. "- ".
-  commands_to_run+="${line:2};"
+  commands_to_run+="${line};"
 done < <(echo "$script_lines")
 
 docker ps -aq --filter name=fake-ci-job | xargs docker rm -f > /dev/null
@@ -34,7 +33,7 @@ docker exec \
 
 # after the job finished successfully get optional artifacts out
 # further cache steps to be added later
-artifact_paths=$(yq ".${job_name}.artifacts.paths // \"\"" .gitlab-ci.yml)
+artifact_paths=$(yq ".${job_name}.artifacts.paths[]" .gitlab-ci.yml)
 
 if [ -n "$artifact_paths" ]
 then
@@ -47,8 +46,7 @@ then
 
   while IFS= read -r line
   do
-    # stripping the first two characters from the YAML list elements, i.e. "- ".
-    commands_to_run+="cp -R ./${line:2} /artifacts/${job_name};"
+    commands_to_run+="cp -R ./${line} /artifacts/${job_name};"
   done < <(echo "$artifact_paths")
 
   docker exec \
