@@ -2,6 +2,8 @@
 
 set -euo pipefail
 
+job_name="$1"
+
 # further artifacts and cache steps to be added later
 commands="
 cp -Rp /checkout/. /job;
@@ -22,3 +24,18 @@ docker run \
 docker exec \
   fake-ci-preparation \
   sh -c "${commands/$'\n'/}"
+
+# after copying the code get the artifacts in place
+if [ "$job_name" == "test" ]
+then
+  echo "Preparing artifacts."
+  commands="
+    cp -Rp /artifacts/build/file.txt /job;
+  "
+
+  docker exec \
+    fake-ci-preparation \
+    sh -c "${commands/$'\n'/}"
+else
+  echo "Skipping artifacts."
+fi

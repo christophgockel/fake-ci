@@ -52,7 +52,7 @@ echo "Checking out Code"
 "$fake_ci_directory"/checkout-container.sh
 
 echo "Preparing Code"
-"$fake_ci_directory"/preparation-container.sh
+"$fake_ci_directory"/preparation-container.sh "$job_name"
 
 echo "Running Job"
 "$fake_ci_directory"/job-container.sh "$job_name"

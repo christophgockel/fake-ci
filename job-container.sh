@@ -24,6 +24,10 @@ job_name="$1"
 #   image: alpine:latest
 #   script:
 #     - echo "Running test."
+#     - cat file.txt
+#   needs:
+#     - job: build
+#       artifacts: true
 #
 
 # further cache steps to be added later
@@ -41,6 +45,7 @@ else
     set -x;
     cd /job;
     echo \"Running test\";
+    cat file.txt;
   "
 fi
 
