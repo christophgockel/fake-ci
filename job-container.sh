@@ -1,30 +1,49 @@
 #!/bin/sh
 
-set -euxo pipefail
+set -euo pipefail
+
+job_name="$1"
 
 #
-# This job simulates running a CI job with the following configuration
+# This container simulates running CI jobs with the following configuration
+# depending on the argument to the script.
 #
-# build-job:
+# build:
 #   stage: build
 #   image: alpine:latest
 #   script:
-#     - echo "Running build-job."
+#     - echo "Running build."
 #     - cat readme.md
 #     - echo "message" > file.txt
 #   artifacts:
 #     paths:
 #       - file.txt
 #
+# test:
+#   stage: test
+#   image: alpine:latest
+#   script:
+#     - echo "Running test."
 #
 
 # further cache steps to be added later
-commands="
-cd /job;
-echo \"Running build-job\";
-cat readme.md;
-echo \"message\" > file.txt
-"
+if [ "$job_name" == "build" ]
+then
+  commands="
+    set -x;
+    cd /job;
+    echo \"Running build\";
+    cat readme.md;
+    echo \"message\" > file.txt
+  "
+else
+  commands="
+    set -x;
+    cd /job;
+    echo \"Running test\";
+  "
+fi
+
 
 docker ps -aq --filter name=fake-ci-job | xargs docker rm -f > /dev/null
 
@@ -41,12 +60,15 @@ docker exec \
   sh -c "${commands/$'\n'/}"
 
 # after the job finished successfully get the artifacts out
-commands="
-cd /job;
-mkdir -p /artifacts/build-job;
-cp file.txt /artifacts/build-job/;
-"
+if [ "$job_name" == "build" ]
+then
+  commands="
+  cd /job;
+  mkdir -p /artifacts/build;
+  cp file.txt /artifacts/build/;
+  "
 
-docker exec \
-  fake-ci-job \
-  sh -c "${commands/$'\n'/}"
+  docker exec \
+    fake-ci-job \
+    sh -c "${commands/$'\n'/}"
+fi

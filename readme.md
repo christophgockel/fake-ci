@@ -36,6 +36,7 @@ The `fake-ci` shell script automatically builds a Docker image it needs in case 
 
 - Docker or Rancher
 - Git
+- yq
 - macOS (not tested on anything else)
 
 
