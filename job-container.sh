@@ -41,8 +41,8 @@ then
   echo "Extracting Artifacts."
 
   commands_to_run="
-  cd /job;
-  mkdir -p /artifacts/${job_name};
+    cd /job;
+    mkdir -p /artifacts/${job_name};
   "
 
   while IFS= read -r line
