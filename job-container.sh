@@ -1,54 +1,21 @@
-#!/bin/sh
+#!/bin/zsh
 
 set -euo pipefail
 
 job_name="$1"
 
-#
-# This container simulates running CI jobs with the following configuration
-# depending on the argument to the script.
-#
-# build:
-#   stage: build
-#   image: alpine:latest
-#   script:
-#     - echo "Running build."
-#     - cat readme.md
-#     - echo "message" > file.txt
-#   artifacts:
-#     paths:
-#       - file.txt
-#
-# test:
-#   stage: test
-#   image: alpine:latest
-#   script:
-#     - echo "Running test."
-#     - cat file.txt
-#   needs:
-#     - job: build
-#       artifacts: true
-#
+commands_to_run="
+  set -x;
+  cd /job;
+"
 
-# further cache steps to be added later
-if [ "$job_name" == "build" ]
-then
-  commands="
-    set -x;
-    cd /job;
-    echo \"Running build\";
-    cat readme.md;
-    echo \"message\" > file.txt
-  "
-else
-  commands="
-    set -x;
-    cd /job;
-    echo \"Running test\";
-    cat file.txt;
-  "
-fi
+script_lines=$(yq ".${job_name}.script" .gitlab-ci.yml)
 
+while IFS= read -r line
+do
+  # stripping the first two characters from the YAML list elements, i.e. "- ".
+  commands_to_run+="${line:2};"
+done < <(echo "$script_lines")
 
 docker ps -aq --filter name=fake-ci-job | xargs docker rm -f > /dev/null
 
@@ -62,18 +29,31 @@ docker run \
 # execute job's commands
 docker exec \
   fake-ci-job \
-  sh -c "${commands/$'\n'/}"
+  sh -c "${commands_to_run/$'\n'/}"
 
-# after the job finished successfully get the artifacts out
-if [ "$job_name" == "build" ]
+
+# after the job finished successfully get optional artifacts out
+# further cache steps to be added later
+artifact_paths=$(yq ".${job_name}.artifacts.paths // \"\"" .gitlab-ci.yml)
+
+if [ -n "$artifact_paths" ]
 then
-  commands="
+  echo "Extracting Artifacts."
+
+  commands_to_run="
   cd /job;
-  mkdir -p /artifacts/build;
-  cp file.txt /artifacts/build/;
+  mkdir -p /artifacts/${job_name};
   "
+
+  while IFS= read -r line
+  do
+    # stripping the first two characters from the YAML list elements, i.e. "- ".
+    commands_to_run+="cp -R ./${line:2} /artifacts/${job_name};"
+  done < <(echo "$artifact_paths")
 
   docker exec \
     fake-ci-job \
-    sh -c "${commands/$'\n'/}"
+    sh -c "${commands_to_run/$'\n'/}"
+else
+  echo "No Artifacts to Extract."
 fi
