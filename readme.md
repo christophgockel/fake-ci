@@ -10,6 +10,36 @@ While validating the approach I'm focussing on support for GitLab exclusively.
 Eventually support for more CI/CD providers is intended like GitHub Actions, CircleCI and others.
 
 
+### Required Tools
+
+- Docker or Rancher
+- Git
+- yq
+- macOS (not tested on anything else)
+
+
+### Development and Test Setup
+
+During development there are a lot of hard coded assumptions in the individual scripts.
+This is intentional and helps validating ideas while not having to implement a lot of logic upfront that might not be necessary after learning more about it.
+
+However, ultimately any hard coded parts need to be replaced with logic depending on a real `.gitlab-ci.yml` file.
+To aid development and testing you can execute the script `initialise-example-repo.sh` that's in this repository.
+The repository that is created from this acts as the reference currently being developed towards.
+
+```
+mkdir -p ~/path/to/directory/for/example/repo
+./initialise-example-repo.sh ~/path/to/directory/for/example/repo
+
+cd ~/path/to/directory/for/example/repo
+fake-ci
+```
+
+Make sure to create the example _outside_ of the directory where you cloned this repository to.
+This is because `fake-ci` expects the `.gitlab-ci.yml` configuration to exist in the root of the repository.
+Supporting custom paths for this is a future use case that is currently not a priority.
+
+
 ## Build Steps
 
 Eventually Fake CI can, and potentially should, be its own dedicated tool.
@@ -30,14 +60,6 @@ fake-ci
 ```
 
 The `fake-ci` shell script automatically builds a Docker image it needs in case it's not available yet.
-
-
-### Required Tools
-
-- Docker or Rancher
-- Git
-- yq
-- macOS (not tested on anything else)
 
 
 ## Concepts
