@@ -25,6 +25,7 @@ subcommand_help() {
   echo "Subcommands:"
   echo "    help   Show this usage help."
   echo "    run    Run a CI job."
+  echo "    prune  Remove all Docker artifacts."
   echo
   echo "For help with each subcommand run:"
   echo "${script_name} <subcommand> [-h|--help]"
@@ -71,6 +72,12 @@ subcommand_run() {
 
   echo "Running Job"
   "$fake_ci_directory"/job-container.sh "$job_name"
+}
+
+subcommand_prune() {
+  docker container ls --filter name=fake-ci --quiet | xargs docker container rm -f
+  docker volume ls --filter name=fake --quiet | xargs docker volume rm -f
+  docker image ls --filter reference=fake-ci:latest --quiet | xargs docker image rm -f
 }
 
 subcommand=${1:-}
