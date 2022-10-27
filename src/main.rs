@@ -1,3 +1,5 @@
+mod gitlab;
+
 use serde_yaml::Value;
 use std::env;
 use std::env::current_dir;
