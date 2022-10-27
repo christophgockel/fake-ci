@@ -1,8 +1,10 @@
 mod deserialise;
 
-use deserialise::string_or_seq_string;
+use deserialise::{seq_string_or_struct, string_hashmap, string_or_seq_string};
 use serde::{Deserialize, Serialize};
+use serde_yaml::Value;
 use std::collections::HashMap;
+use std::str::FromStr;
 
 #[rustfmt::skip]
 fn default_empty_list() -> Vec<String> { vec![] }
@@ -12,6 +14,10 @@ fn default_file_include_ref() -> String { "HEAD".into() }
 fn default_artifact_name() -> String { "artifacts.zip".into() }
 #[rustfmt::skip]
 fn default_when() -> When { When::OnSuccess }
+#[rustfmt::skip]
+fn default_true() -> bool { true }
+
+// Keyword reference: https://docs.gitlab.com/ee/ci/yaml/
 
 #[derive(Deserialize, Serialize, PartialEq, Debug, Default)]
 struct GitLabConfiguration {
@@ -26,6 +32,14 @@ struct GitLabConfiguration {
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     #[serde(default)]
     variables: HashMap<String, String>,
+
+    // `workflow` is a global keyword, but we don't do anything with it (yet).
+    // It's defined in here, so that it doesn't get picked up as a regular job.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    workflow: Option<Value>,
+
+    #[serde(flatten)]
+    jobs: HashMap<String, Job>,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Default)]
@@ -105,6 +119,52 @@ struct RemoteInclude {
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 struct TemplateInclude {
     template: String,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Default)]
+struct Job {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    after_script: Option<ListOfStrings>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    artifacts: Option<Artifacts>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    before_script: Option<ListOfStrings>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    extends: Option<ListOfStrings>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    image: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    needs: Option<OneOrMoreNeeds>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    script: Option<ListOfStrings>,
+    #[serde(
+        default,
+        deserialize_with = "string_hashmap",
+        skip_serializing_if = "HashMap::is_empty"
+    )]
+    variables: HashMap<String, String>,
+}
+
+// Wrapping was necessary to get the custom deserializer work with an `Option`
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
+struct OneOrMoreNeeds(#[serde(deserialize_with = "seq_string_or_struct")] Vec<Needs>);
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Default)]
+struct Needs {
+    job: String,
+    #[serde(default = "default_true")]
+    artifacts: bool,
+}
+
+impl FromStr for Needs {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Needs {
+            job: s.to_string(),
+            artifacts: true,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -526,6 +586,301 @@ mod tests {
 
             assert_eq!(
                 config.variables,
+                HashMap::from([("one".into(), "1".into()), ("two".into(), "2".into())])
+            );
+        }
+    }
+
+    mod test_jobs {
+        use super::*;
+
+        #[test]
+        fn deserialises_no_jobs_when_none_defined() {
+            let yaml = "";
+            let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
+
+            assert_eq!(config.jobs.len(), 0);
+        }
+
+        #[test]
+        fn deserialises_all_non_global_keyword_as_jobs() {
+            let yaml = "
+                job-name:
+                  image: dummy:name
+            ";
+            let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
+
+            assert_eq!(config.jobs.len(), 1);
+        }
+
+        #[test]
+        fn deserialises_empty_after_script_when_missing() {
+            let yaml = "
+                job-name:
+                  after_script:
+            ";
+            let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
+            let job = config.jobs.get("job-name").unwrap();
+
+            assert!(job.after_script.is_none());
+        }
+
+        #[test]
+        fn deserialises_after_script_lines() {
+            let yaml = "
+                job-name:
+                  after_script:
+                    - script.sh
+            ";
+            let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
+            let job = config.jobs.get("job-name").unwrap();
+
+            assert_eq!(
+                job.after_script.as_ref().unwrap().0,
+                vec!["script.sh".to_string()]
+            );
+        }
+
+        #[test]
+        fn deserialises_empty_artifacts_when_missing() {
+            let yaml = "
+                job-name:
+                  image: dummy:name
+            ";
+            let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
+            let job = config.jobs.get("job-name").unwrap();
+
+            assert!(job.artifacts.is_none());
+        }
+
+        #[test]
+        fn deserialises_artifacts() {
+            let yaml = "
+                job-name:
+                  artifacts:
+                    paths:
+                      - file
+            ";
+            let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
+            let job = config.jobs.get("job-name").unwrap();
+
+            assert_eq!(
+                job.artifacts.as_ref().unwrap().paths,
+                vec!["file".to_string()]
+            );
+        }
+
+        #[test]
+        fn deserialises_empty_before_script_when_missing() {
+            let yaml = "
+                job-name:
+                  before_script:
+            ";
+            let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
+            let job = config.jobs.get("job-name").unwrap();
+
+            assert!(job.before_script.is_none());
+        }
+
+        #[test]
+        fn deserialises_before_script_lines() {
+            let yaml = "
+                job-name:
+                  before_script:
+                    - script.sh
+            ";
+            let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
+            let job = config.jobs.get("job-name").unwrap();
+
+            assert_eq!(
+                job.before_script.as_ref().unwrap().0,
+                vec!["script.sh".to_string()]
+            );
+        }
+
+        #[test]
+        fn deserialises_empty_extends_when_missing() {
+            let yaml = "
+                job-name:
+                  extends:
+            ";
+            let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
+            let job = config.jobs.get("job-name").unwrap();
+
+            assert!(job.extends.is_none());
+        }
+
+        #[test]
+        fn deserialises_extend_lines() {
+            let yaml = "
+                job-name:
+                  extends:
+                    - .some-template
+            ";
+            let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
+            let job = config.jobs.get("job-name").unwrap();
+
+            assert_eq!(
+                job.extends.as_ref().unwrap().0,
+                vec![".some-template".to_string()]
+            );
+        }
+
+        #[test]
+        fn deserialises_empty_image_when_missing() {
+            let yaml = "
+                job-name:
+                  after_script:
+                    - dummy.sh
+            ";
+            let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
+            let job = config.jobs.get("job-name").unwrap();
+
+            assert!(job.image.is_none());
+        }
+
+        #[test]
+        fn deserialises_job_image_names() {
+            let yaml = "
+                job-name:
+                  image: image:name
+            ";
+            let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
+            let job = config.jobs.get("job-name").unwrap();
+
+            assert_eq!(job.image.to_owned().unwrap(), "image:name".to_string());
+        }
+
+        #[test]
+        fn deserialises_empty_needs_when_missing() {
+            let yaml = "
+                job-name:
+                  image: dummy:name
+            ";
+            let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
+            let job = config.jobs.get("job-name").unwrap();
+
+            assert!(job.needs.is_none());
+        }
+
+        #[test]
+        fn deserialises_empty_needs() {
+            let yaml = "
+                job-name:
+                  needs: []
+            ";
+            let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
+            let job = config.jobs.get("job-name").unwrap();
+
+            assert_eq!(job.needs.as_ref().unwrap().0, vec![]);
+        }
+
+        #[test]
+        fn deserialises_needs_with_list_of_job_names() {
+            let yaml = "
+                job-name:
+                  needs:
+                    - job-a
+                    - job-b
+            ";
+            let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
+            let job = config.jobs.get("job-name").unwrap();
+
+            assert_eq!(
+                job.needs.as_ref().unwrap().0,
+                vec![
+                    Needs {
+                        job: "job-a".to_string(),
+                        artifacts: true
+                    },
+                    Needs {
+                        job: "job-b".to_string(),
+                        artifacts: true
+                    },
+                ]
+            );
+        }
+
+        #[test]
+        fn deserialises_needs_with_explicit_job_definition() {
+            let yaml = "
+                job-name:
+                  needs:
+                    - job: name-a
+                      artifacts: false
+                    - job: name-b
+            ";
+            let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
+            let job = config.jobs.get("job-name").unwrap();
+
+            assert_eq!(
+                job.needs.as_ref().unwrap().0,
+                vec![
+                    Needs {
+                        job: "name-a".to_string(),
+                        artifacts: false
+                    },
+                    Needs {
+                        job: "name-b".to_string(),
+                        artifacts: true
+                    },
+                ]
+            );
+        }
+
+        #[test]
+        fn deserialises_empty_script_when_missing() {
+            let yaml = "
+                job-name:
+                  script:
+            ";
+            let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
+            let job = config.jobs.get("job-name").unwrap();
+
+            assert!(job.script.is_none());
+        }
+
+        #[test]
+        fn deserialises_script_lines() {
+            let yaml = "
+                job-name:
+                  script:
+                    - script.sh
+            ";
+            let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
+            let job = config.jobs.get("job-name").unwrap();
+
+            assert_eq!(
+                job.script.as_ref().unwrap().0,
+                vec!["script.sh".to_string()]
+            );
+        }
+
+        #[test]
+        fn deserialises_empty_variables_when_missing() {
+            let yaml = "
+              job-name:
+                image: dummy:name
+            ";
+            let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
+            let job = config.jobs.get("job-name").unwrap();
+
+            assert!(job.script.is_none());
+        }
+
+        #[test]
+        fn deserialises_variables() {
+            let yaml = "
+                job-name:
+                  variables:
+                    one: 1
+                    two: 2
+            ";
+            let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
+            let job = config.jobs.get("job-name").unwrap();
+
+            assert_eq!(
+                job.variables,
                 HashMap::from([("one".into(), "1".into()), ("two".into(), "2".into())])
             );
         }
