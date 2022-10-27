@@ -17,6 +17,7 @@ fi
 script_name=$(basename "$0")
 script_name="${script_name:0:-3}" # removes `.sh` from filename
 fake_ci_directory=$(dirname "$0")
+fake_ci_binary="${fake_ci_directory}/target/debug/fake-ci"
 
 subcommand_help() {
   echo "Usage:"
@@ -34,7 +35,7 @@ subcommand_help() {
 
 subcommand_run() {
   job_name=${1:-}
-  available_jobs_list=$(yq 'keys' .gitlab-ci.yml | grep --invert-match -E "stages")
+  available_jobs_list=$(yq 'keys' <("$fake_ci_binary") | grep --invert-match -E "stages")
   available_jobs_csv=",$(echo "$available_jobs_list" | yq 'to_csv'),"
 
   if [ -z "$job_name" ] || [ "$job_name" = "-h" ] || [ "$job_name" = "--help" ]

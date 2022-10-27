@@ -43,11 +43,14 @@ Supporting custom paths for this is a future use case that is currently not a pr
 ## Build Steps
 
 Eventually Fake CI can, and potentially should, be its own dedicated tool.
-But while still validating the overall idea it consists of a few shell scripts.
+But while still validating the overall idea it consists of a few shell scripts and a binary written in Rust.
 
 There are a few manual commands necessary to get it running:
 
 ```
+# compile the binary
+cargo build
+
 # this alias needs to be defined in your shell
 alias fake-ci=~/<path to>/fake-ci/fake-ci.sh
 
@@ -60,6 +63,8 @@ fake-ci
 ```
 
 The `fake-ci` shell script automatically builds a Docker image it needs in case it's not available yet.
+
+Compiling the binary with `cargo build` is necessary to create the binary file the remaining shell scripts expect to exist.
 
 
 ## Concepts
