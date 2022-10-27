@@ -1,3 +1,4 @@
+use crate::gitlab::Job;
 use serde::de::{DeserializeSeed, Error, MapAccess, Visitor};
 use serde::{de, Deserialize, Deserializer};
 use serde_yaml::Value;
@@ -163,3 +164,53 @@ where
     let visitor = MapVisitor;
     deserializer.deserialize_map(visitor)
 }
+
+#[macro_export]
+macro_rules! deserialize_job_hashmap_conditionally {
+    ($function_name:ident, $partition_predicate:expr) => {
+        pub fn $function_name<'de, D>(deserializer: D) -> Result<HashMap<String, Job>, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            struct MyMapVisitor {
+                marker: PhantomData<fn() -> HashMap<String, Job>>,
+            }
+
+            impl MyMapVisitor {
+                fn new() -> Self {
+                    MyMapVisitor {
+                        marker: PhantomData,
+                    }
+                }
+            }
+
+            impl<'de> Visitor<'de> for MyMapVisitor {
+                type Value = HashMap<String, Job>;
+
+                fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("a map")
+                }
+
+                fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
+                where
+                    M: MapAccess<'de>,
+                {
+                    let mut map = HashMap::with_capacity(access.size_hint().unwrap_or(0));
+
+                    while let Some((key, value)) = access.next_entry::<String, Job>()? {
+                        if $partition_predicate(&key) {
+                            map.insert(key, value);
+                        }
+                    }
+
+                    Ok(map)
+                }
+            }
+
+            deserializer.deserialize_map(MyMapVisitor::new())
+        }
+    };
+}
+
+deserialize_job_hashmap_conditionally!(hashmap_of_templates, |key: &String| key.starts_with('.'));
+deserialize_job_hashmap_conditionally!(hashmap_of_jobs, |key: &String| !key.starts_with('.'));

@@ -1,6 +1,9 @@
 mod deserialise;
 
-use deserialise::{seq_string_or_struct, string_hashmap, string_or_seq_string};
+use deserialise::{
+    hashmap_of_jobs, hashmap_of_templates, seq_string_or_struct, string_hashmap,
+    string_or_seq_string,
+};
 use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
 use std::collections::HashMap;
@@ -20,7 +23,8 @@ fn default_true() -> bool { true }
 // Keyword reference: https://docs.gitlab.com/ee/ci/yaml/
 
 #[derive(Deserialize, Serialize, PartialEq, Debug, Default)]
-struct GitLabConfiguration {
+pub struct GitLabConfiguration {
+    #[serde(skip_serializing_if = "Option::is_none")]
     default: Option<GlobalDefaults>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -34,16 +38,22 @@ struct GitLabConfiguration {
     variables: HashMap<String, String>,
 
     // `workflow` is a global keyword, but we don't do anything with it (yet).
-    // It's defined in here, so that it doesn't get picked up as a regular job.
+    // It's defined in here, so that it doesn't get picked up as a regular job
+    // in the jobs map below.
     #[serde(skip_serializing_if = "Option::is_none")]
     workflow: Option<Value>,
 
+    #[serde(deserialize_with = "hashmap_of_jobs")]
     #[serde(flatten)]
     jobs: HashMap<String, Job>,
+
+    #[serde(deserialize_with = "hashmap_of_templates")]
+    #[serde(flatten)]
+    templates: HashMap<String, Job>,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Default)]
-struct GlobalDefaults {
+pub struct GlobalDefaults {
     #[serde(skip_serializing_if = "Option::is_none")]
     after_script: Option<ListOfStrings>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -55,10 +65,10 @@ struct GlobalDefaults {
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
-struct ListOfStrings(#[serde(deserialize_with = "string_or_seq_string")] Vec<String>);
+pub struct ListOfStrings(#[serde(deserialize_with = "string_or_seq_string")] Vec<String>);
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Default)]
-struct Artifacts {
+pub struct Artifacts {
     #[serde(default = "default_artifact_name")]
     name: String,
     #[serde(default = "default_when")]
@@ -69,7 +79,7 @@ struct Artifacts {
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 #[serde(rename_all = "snake_case")]
-enum When {
+pub enum When {
     OnSuccess,
     OnFailure,
     Always,
@@ -83,14 +93,14 @@ impl Default for When {
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 #[serde(untagged)]
-enum OneOrMoreIncludes {
+pub enum OneOrMoreIncludes {
     Single(Include),
     Multiple(Vec<Include>),
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 #[serde(untagged)]
-enum Include {
+pub enum Include {
     Local(LocalInclude),
     File(FileInclude),
     Remote(RemoteInclude),
@@ -98,12 +108,12 @@ enum Include {
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
-struct LocalInclude {
+pub struct LocalInclude {
     local: String,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
-struct FileInclude {
+pub struct FileInclude {
     project: String,
     #[serde(default = "default_file_include_ref")]
     r#ref: String,
@@ -112,17 +122,17 @@ struct FileInclude {
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
-struct RemoteInclude {
+pub struct RemoteInclude {
     remote: String,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
-struct TemplateInclude {
+pub struct TemplateInclude {
     template: String,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Default)]
-struct Job {
+pub struct Job {
     #[serde(skip_serializing_if = "Option::is_none")]
     after_script: Option<ListOfStrings>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -147,10 +157,10 @@ struct Job {
 
 // Wrapping was necessary to get the custom deserializer work with an `Option`
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
-struct OneOrMoreNeeds(#[serde(deserialize_with = "seq_string_or_struct")] Vec<Needs>);
+pub struct OneOrMoreNeeds(#[serde(deserialize_with = "seq_string_or_struct")] Vec<Needs>);
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Default)]
-struct Needs {
+pub struct Needs {
     job: String,
     #[serde(default = "default_true")]
     artifacts: bool,
@@ -603,7 +613,7 @@ mod tests {
         }
 
         #[test]
-        fn deserialises_all_non_global_keyword_as_jobs() {
+        fn deserialises_all_non_global_keyword_not_starting_with_a_dot_as_jobs() {
             let yaml = "
                 job-name:
                   image: dummy:name
@@ -611,6 +621,17 @@ mod tests {
             let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
 
             assert_eq!(config.jobs.len(), 1);
+        }
+
+        #[test]
+        fn does_not_deserialises_jobs_that_start_with_a_dot() {
+            let yaml = "
+                .template-name:
+                  image: dummy:name
+            ";
+            let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
+
+            assert_eq!(config.jobs.len(), 0);
         }
 
         #[test]
@@ -883,6 +904,32 @@ mod tests {
                 job.variables,
                 HashMap::from([("one".into(), "1".into()), ("two".into(), "2".into())])
             );
+        }
+    }
+
+    mod test_templates {
+        use super::*;
+
+        #[test]
+        fn deserialises_all_non_global_keyword_starting_with_a_dot_as_templates() {
+            let yaml = "
+                .template-name:
+                  image: dummy:name
+            ";
+            let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
+
+            assert_eq!(config.templates.len(), 1);
+        }
+
+        #[test]
+        fn does_not_deserialises_templates_that_do_not_start_with_a_dot() {
+            let yaml = "
+                job-name:
+                  image: dummy:name
+            ";
+            let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
+
+            assert_eq!(config.templates.len(), 0);
         }
     }
 }
