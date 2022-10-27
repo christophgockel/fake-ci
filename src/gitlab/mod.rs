@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[rustfmt::skip]
 fn default_empty_list() -> Vec<String> { vec![] }
@@ -7,6 +8,10 @@ fn default_empty_list() -> Vec<String> { vec![] }
 struct GitLabConfiguration {
     #[serde(default = "default_empty_list", skip_serializing_if = "Vec::is_empty")]
     stages: Vec<String>,
+
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    #[serde(default)]
+    variables: HashMap<String, String>,
 }
 
 #[cfg(test)]
@@ -35,6 +40,33 @@ mod tests {
             let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
 
             assert_eq!(config.stages.len(), 0);
+        }
+    }
+
+    mod test_variables {
+        use super::*;
+
+        #[test]
+        fn deserialises_empty_variables_when_missing() {
+            let yaml = "";
+            let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
+
+            assert_eq!(config.variables.len(), 0);
+        }
+
+        #[test]
+        fn deserialises_variables() {
+            let yaml = "
+                variables:
+                  one: 1
+                  two: 2
+            ";
+            let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
+
+            assert_eq!(
+                config.variables,
+                HashMap::from([("one".into(), "1".into()), ("two".into(), "2".into())])
+            );
         }
     }
 }
