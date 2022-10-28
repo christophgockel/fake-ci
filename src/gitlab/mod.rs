@@ -1,7 +1,7 @@
 mod deserialise;
 
 use deserialise::{
-    hashmap_of_jobs, hashmap_of_templates, seq_string_or_struct, string_hashmap,
+    hashmap_of_jobs, hashmap_of_templates, map_to_list_of_string_tuples, seq_string_or_struct,
     string_or_seq_string,
 };
 use serde::{Deserialize, Serialize};
@@ -33,9 +33,12 @@ pub struct GitLabConfiguration {
     #[serde(default = "default_empty_list", skip_serializing_if = "Vec::is_empty")]
     stages: Vec<String>,
 
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    #[serde(default)]
-    variables: HashMap<String, String>,
+    #[serde(
+        default,
+        deserialize_with = "map_to_list_of_string_tuples",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    variables: Vec<(String, String)>,
 
     // `workflow` is a global keyword, but we don't do anything with it (yet).
     // It's defined in here, so that it doesn't get picked up as a regular job
@@ -149,10 +152,10 @@ pub struct Job {
     script: Option<ListOfStrings>,
     #[serde(
         default,
-        deserialize_with = "string_hashmap",
-        skip_serializing_if = "HashMap::is_empty"
+        deserialize_with = "map_to_list_of_string_tuples",
+        skip_serializing_if = "Vec::is_empty"
     )]
-    variables: HashMap<String, String>,
+    variables: Vec<(String, String)>,
 }
 
 // Wrapping was necessary to get the custom deserializer work with an `Option`
@@ -596,7 +599,27 @@ mod tests {
 
             assert_eq!(
                 config.variables,
-                HashMap::from([("one".into(), "1".into()), ("two".into(), "2".into())])
+                vec![("one".into(), "1".into()), ("two".into(), "2".into())]
+            );
+        }
+
+        #[test]
+        fn deserialises_variables_in_stable_key_order() {
+            let yaml = "
+                variables:
+                  z: 0
+                  '1': 1
+                  a: 2
+            ";
+            let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
+
+            assert_eq!(
+                config.variables,
+                vec![
+                    ("z".into(), "0".into()),
+                    ("1".into(), "1".into()),
+                    ("a".into(), "2".into())
+                ]
             );
         }
     }
@@ -902,7 +925,29 @@ mod tests {
 
             assert_eq!(
                 job.variables,
-                HashMap::from([("one".into(), "1".into()), ("two".into(), "2".into())])
+                vec![("one".into(), "1".into()), ("two".into(), "2".into())]
+            );
+        }
+
+        #[test]
+        fn deserialises_variables_in_stable_key_order() {
+            let yaml = "
+                job-name:
+                  variables:
+                    z: 0
+                    '1': 1
+                    a: 2
+            ";
+            let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
+            let job = config.jobs.get("job-name").unwrap();
+
+            assert_eq!(
+                job.variables,
+                vec![
+                    ("z".into(), "0".into()),
+                    ("1".into(), "1".into()),
+                    ("a".into(), "2".into())
+                ]
             );
         }
     }

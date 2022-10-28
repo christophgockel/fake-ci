@@ -126,14 +126,16 @@ where
     deserializer.deserialize_seq(SeqStringOrStruct(PhantomData))
 }
 
-pub fn string_hashmap<'de, D>(deserializer: D) -> Result<HashMap<String, String>, D::Error>
+pub fn map_to_list_of_string_tuples<'de, D>(
+    deserializer: D,
+) -> Result<Vec<(String, String)>, D::Error>
 where
     D: Deserializer<'de>,
 {
     struct MapVisitor;
 
     impl<'de> Visitor<'de> for MapVisitor {
-        type Value = HashMap<String, String>;
+        type Value = Vec<(String, String)>;
 
         fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             formatter.write_str("map")
@@ -143,7 +145,7 @@ where
         where
             A: MapAccess<'de>,
         {
-            let mut values = HashMap::new();
+            let mut values = vec![];
 
             while let Some((key, value)) = access.next_entry::<String, Value>()? {
                 let value = match value {
@@ -151,10 +153,10 @@ where
                     Value::Bool(b) => b.to_string(),
                     Value::Number(n) => n.to_string(),
                     Value::String(s) => s,
-                    _ => return Err(A::Error::custom("Can only put primitive types into map")),
+                    _ => return Err(A::Error::custom("Can only put primitive types into list")),
                 };
 
-                values.insert(key, value);
+                values.push((key, value));
             }
 
             Ok(values)
