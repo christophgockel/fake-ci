@@ -1,4 +1,4 @@
-use crate::gitlab::Job;
+use crate::gitlab::configuration::Job;
 use serde::de::{DeserializeSeed, Error, MapAccess, Visitor};
 use serde::{de, Deserialize, Deserializer};
 use serde_yaml::Value;
