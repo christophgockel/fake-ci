@@ -23,6 +23,7 @@ where
 
             merge_variables(&template.variables, &mut job.variables);
             merge_script(&template.after_script, &mut job.after_script);
+            merge_image(&template.image, &mut job.image);
         }
 
         merge_variables(&configuration.variables, &mut job.variables);
@@ -209,12 +210,37 @@ mod tests {
         }
 
         #[test]
+        fn uses_template_image_when_job_does_not_define_one() {
+            let content = "
+                default:
+                  image: default:image
+
+                .template:
+                  image: template:image
+
+                job:
+                  extends:
+                    - .template
+            ";
+
+            let configuration = parse(content.as_bytes()).unwrap();
+            let job = configuration.jobs.get("job").unwrap();
+
+            assert_eq!(job.image, Some("template:image".into()));
+        }
+
+        #[test]
         fn uses_job_image_when_job_does_define_one() {
             let content = "
                 default:
                   image: default:image
 
+                .template:
+                  image: template:image
+
                 job:
+                  extends:
+                    - .template
                   image: job:image
             ";
 
