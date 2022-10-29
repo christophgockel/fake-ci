@@ -3,7 +3,7 @@ mod deserialise;
 mod merge;
 
 use crate::gitlab::configuration::GitLabConfiguration;
-use crate::gitlab::merge::{merge_image, merge_variables};
+use crate::gitlab::merge::{merge_image, merge_script, merge_variables};
 
 pub fn parse<R>(reader: R) -> Result<GitLabConfiguration, Box<dyn std::error::Error>>
 where
@@ -15,6 +15,7 @@ where
         merge_variables(&configuration.variables, &mut job.variables);
 
         if let Some(defaults) = &configuration.default {
+            merge_script(&defaults.after_script, &mut job.after_script);
             merge_image(&defaults.image, &mut job.image);
         }
     }
@@ -61,6 +62,53 @@ mod tests {
                     ("VARIABLE_A".into(), "1".into()),
                     ("VARIABLE_B".into(), "2".into())
                 ]
+            );
+        }
+    }
+
+    mod test_merge_precedence_of_after_scripts {
+        use super::*;
+        use crate::gitlab::configuration::ListOfStrings;
+
+        #[test]
+        fn uses_global_after_script_when_job_does_not_define_one() {
+            let content = "
+                default:
+                  after_script:
+                    - default_command.sh
+
+                job:
+                  variables:
+                    DUMMY: true
+            ";
+
+            let configuration = parse(content.as_bytes()).unwrap();
+            let job = configuration.jobs.get("job").unwrap();
+
+            assert_eq!(
+                job.after_script,
+                Some(ListOfStrings(vec!["default_command.sh".into()]))
+            );
+        }
+
+        #[test]
+        fn uses_job_after_script_when_job_does_define_one() {
+            let content = "
+                default:
+                  after_script:
+                    - default_command.sh
+
+                job:
+                  after_script:
+                    - job_command.sh
+            ";
+
+            let configuration = parse(content.as_bytes()).unwrap();
+            let job = configuration.jobs.get("job").unwrap();
+
+            assert_eq!(
+                job.after_script,
+                Some(ListOfStrings(vec!["job_command.sh".into()]))
             );
         }
     }

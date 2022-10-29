@@ -1,3 +1,5 @@
+use crate::gitlab::configuration::ListOfStrings;
+
 pub fn merge_variables(source: &[(String, String)], target: &mut Vec<(String, String)>) {
     target.splice(0..0, source.to_owned());
 }
@@ -5,6 +7,12 @@ pub fn merge_variables(source: &[(String, String)], target: &mut Vec<(String, St
 pub fn merge_image(source: &Option<String>, target: &mut Option<String>) {
     if let (Some(s), t @ None) = (source, target) {
         let _ = t.insert(s.to_owned());
+    };
+}
+
+pub fn merge_script(source: &Option<ListOfStrings>, target: &mut Option<ListOfStrings>) {
+    if let (Some(s), t @ None) = (source, target) {
+        let _ = t.insert(ListOfStrings(s.0.clone()));
     };
 }
 
@@ -63,6 +71,40 @@ mod tests {
             merge_image(&source, &mut target);
 
             assert_eq!(target, Some("value".into()));
+        }
+    }
+
+    mod test_scripts {
+        use super::*;
+
+        #[test]
+        fn does_not_do_anything_if_no_values_are_given() {
+            let source = None;
+            let mut target = None;
+
+            merge_script(&source, &mut target);
+
+            assert_eq!(target, None);
+        }
+
+        #[test]
+        fn does_not_overwrite_anything_if_target_has_a_value_already() {
+            let source = Some(ListOfStrings(vec!["other value".into()]));
+            let mut target = Some(ListOfStrings(vec!["value".into()]));
+
+            merge_script(&source, &mut target);
+
+            assert_eq!(target, Some(ListOfStrings(vec!["value".into()])));
+        }
+
+        #[test]
+        fn overwrites_target_with_source_when_not_set_yet() {
+            let source = Some(ListOfStrings(vec!["value".into()]));
+            let mut target = None;
+
+            merge_script(&source, &mut target);
+
+            assert_eq!(target, Some(ListOfStrings(vec!["value".into()])));
         }
     }
 }
