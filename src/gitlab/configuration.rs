@@ -23,59 +23,59 @@ fn default_true() -> bool { true }
 #[derive(Deserialize, Serialize, PartialEq, Debug, Default)]
 pub struct GitLabConfiguration {
     #[serde(skip_serializing_if = "Option::is_none")]
-    default: Option<GlobalDefaults>,
+    pub default: Option<GlobalDefaults>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    include: Option<OneOrMoreIncludes>,
+    pub include: Option<OneOrMoreIncludes>,
 
     #[serde(default = "default_empty_list", skip_serializing_if = "Vec::is_empty")]
-    stages: Vec<String>,
+    pub stages: Vec<String>,
 
     #[serde(
         default,
         deserialize_with = "map_to_list_of_string_tuples",
         skip_serializing_if = "Vec::is_empty"
     )]
-    variables: Vec<(String, String)>,
+    pub variables: Vec<(String, String)>,
 
     // `workflow` is a global keyword, but we don't do anything with it (yet).
     // It's defined in here, so that it doesn't get picked up as a regular job
     // in the jobs map below.
     #[serde(skip_serializing_if = "Option::is_none")]
-    workflow: Option<Value>,
+    pub workflow: Option<Value>,
 
     #[serde(deserialize_with = "hashmap_of_jobs")]
     #[serde(flatten)]
-    jobs: HashMap<String, Job>,
+    pub jobs: HashMap<String, Job>,
 
     #[serde(deserialize_with = "hashmap_of_templates")]
     #[serde(flatten)]
-    templates: HashMap<String, Job>,
+    pub templates: HashMap<String, Job>,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Default)]
 pub struct GlobalDefaults {
     #[serde(skip_serializing_if = "Option::is_none")]
-    after_script: Option<ListOfStrings>,
+    pub after_script: Option<ListOfStrings>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    artifacts: Option<Artifacts>,
+    pub artifacts: Option<Artifacts>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    before_script: Option<ListOfStrings>,
+    pub before_script: Option<ListOfStrings>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    image: Option<String>,
+    pub image: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
-pub struct ListOfStrings(#[serde(deserialize_with = "string_or_seq_string")] Vec<String>);
+pub struct ListOfStrings(#[serde(deserialize_with = "string_or_seq_string")] pub Vec<String>);
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Default)]
 pub struct Artifacts {
     #[serde(default = "default_artifact_name")]
-    name: String,
+    pub name: String,
     #[serde(default = "default_when")]
-    when: When,
+    pub when: When,
     #[serde(default)]
-    paths: Vec<String>,
+    pub paths: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
@@ -110,61 +110,61 @@ pub enum Include {
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct LocalInclude {
-    local: String,
+    pub local: String,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct FileInclude {
-    project: String,
+    pub project: String,
     #[serde(default = "default_file_include_ref")]
-    r#ref: String,
+    pub r#ref: String,
     #[serde(deserialize_with = "string_or_seq_string")]
-    file: Vec<String>,
+    pub file: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct RemoteInclude {
-    remote: String,
+    pub remote: String,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct TemplateInclude {
-    template: String,
+    pub template: String,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Default)]
 pub struct Job {
     #[serde(skip_serializing_if = "Option::is_none")]
-    after_script: Option<ListOfStrings>,
+    pub after_script: Option<ListOfStrings>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    artifacts: Option<Artifacts>,
+    pub artifacts: Option<Artifacts>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    before_script: Option<ListOfStrings>,
+    pub before_script: Option<ListOfStrings>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    extends: Option<ListOfStrings>,
+    pub extends: Option<ListOfStrings>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    image: Option<String>,
+    pub image: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    needs: Option<OneOrMoreNeeds>,
+    pub needs: Option<OneOrMoreNeeds>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    script: Option<ListOfStrings>,
+    pub script: Option<ListOfStrings>,
     #[serde(
         default,
         deserialize_with = "map_to_list_of_string_tuples",
         skip_serializing_if = "Vec::is_empty"
     )]
-    variables: Vec<(String, String)>,
+    pub variables: Vec<(String, String)>,
 }
 
 // Wrapping was necessary to get the custom deserializer work with an `Option`
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
-pub struct OneOrMoreNeeds(#[serde(deserialize_with = "seq_string_or_struct")] Vec<Needs>);
+pub struct OneOrMoreNeeds(#[serde(deserialize_with = "seq_string_or_struct")] pub Vec<Needs>);
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Default)]
 pub struct Needs {
-    job: String,
+    pub job: String,
     #[serde(default = "default_true")]
-    artifacts: bool,
+    pub artifacts: bool,
 }
 
 impl FromStr for Needs {
