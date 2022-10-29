@@ -377,6 +377,31 @@ mod tests {
 
             assert_eq!(config.variables.len(), 1);
         }
+
+        #[test]
+        fn resolves_and_adds_variables_from_multiple_local_files() {
+            let file_a_content = "
+                variables:
+                  FILE_A: value a
+            ";
+            let file_b_content = "
+                variables:
+                  FILE_B: value b
+            ";
+            let mut files = StubFiles::default();
+            files.add_file("file-a.yml", file_a_content);
+            files.add_file("file-b.yml", file_b_content);
+
+            let content = "
+                include:
+                  - local: file-a.yml
+                  - local: file-b.yml
+            ";
+
+            let config = parse(content.as_bytes(), &files).unwrap();
+
+            assert_eq!(config.variables.len(), 2);
+        }
     }
 }
 
@@ -387,19 +412,32 @@ fn read_all(
     let mut included_configurations = vec![];
 
     match includes {
-        OneOrMoreIncludes::Single(include) => match include {
-            Include::Local(local_include) => {
-                let content = file_access.read_local_file(&local_include.local)?;
-                let new_config = parse(*content, file_access)?;
-
-                included_configurations.push(new_config);
+        OneOrMoreIncludes::Single(include) => {
+            included_configurations.push(read_and_parse(include, file_access)?);
+        }
+        OneOrMoreIncludes::Multiple(includes) => {
+            for include in includes {
+                included_configurations.push(read_and_parse(include, file_access)?);
             }
-            Include::File(_) => {}
-            Include::Remote(_) => {}
-            Include::Template(_) => {}
-        },
-        OneOrMoreIncludes::Multiple(_) => {}
+        }
     }
 
     Ok(included_configurations)
+}
+
+fn read_and_parse(
+    include: &Include,
+    file_access: &impl FileAccess,
+) -> Result<GitLabConfiguration, Box<dyn std::error::Error>> {
+    match include {
+        Include::Local(local_include) => {
+            let content = file_access.read_local_file(&local_include.local)?;
+            let configuration = parse(*content, file_access)?;
+
+            Ok(configuration)
+        }
+        Include::File(_) => todo!(),
+        Include::Remote(_) => todo!(),
+        Include::Template(_) => todo!(),
+    }
 }

@@ -44,6 +44,10 @@ impl StubFiles {
             file_contents: HashMap::from([(file_name.into(), content.into())]),
         }
     }
+
+    pub fn add_file(&mut self, file_name: &str, content: &str) {
+        self.file_contents.insert(file_name.into(), content.into());
+    }
 }
 
 #[cfg(test)]
