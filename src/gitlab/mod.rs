@@ -17,6 +17,7 @@ where
         if let Some(defaults) = &configuration.default {
             merge_script(&defaults.after_script, &mut job.after_script);
             merge_image(&defaults.image, &mut job.image);
+            merge_script(&defaults.before_script, &mut job.before_script);
         }
     }
 
@@ -147,6 +148,51 @@ mod tests {
             let job = configuration.jobs.get("job").unwrap();
 
             assert_eq!(job.image, Some("job:image".into()));
+        }
+    }
+    mod test_merge_precedence_of_before_scripts {
+        use super::*;
+        use crate::gitlab::configuration::ListOfStrings;
+
+        #[test]
+        fn uses_global_before_script_when_job_does_not_define_one() {
+            let content = "
+                default:
+                  before_script:
+                    - default_command.sh
+
+                job:
+                  variables:
+                    DUMMY: true
+            ";
+
+            let configuration = parse(content.as_bytes()).unwrap();
+            let job = configuration.jobs.get("job").unwrap();
+
+            assert_eq!(
+                job.before_script,
+                Some(ListOfStrings(vec!["default_command.sh".into()]))
+            );
+        }
+
+        #[test]
+        fn uses_job_before_script_when_job_does_define_one() {
+            let content = "
+                default:
+                  before_script:
+                    - default_command.sh
+                job:
+                  before_script:
+                    - job_command.sh
+            ";
+
+            let configuration = parse(content.as_bytes()).unwrap();
+            let job = configuration.jobs.get("job").unwrap();
+
+            assert_eq!(
+                job.before_script,
+                Some(ListOfStrings(vec!["job_command.sh".into()]))
+            );
         }
     }
 }
