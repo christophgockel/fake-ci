@@ -1,4 +1,4 @@
-use crate::gitlab::configuration::{Job, ListOfStrings};
+use crate::gitlab::configuration::{GitLabConfiguration, Job, ListOfStrings};
 use std::collections::HashMap;
 use std::io::ErrorKind;
 
@@ -39,6 +39,10 @@ pub fn collect_template_names(
     }
 
     Ok(collected_names)
+}
+
+pub fn merge_configuration(source: &GitLabConfiguration, target: &mut GitLabConfiguration) {
+    target.variables.splice(0..0, source.variables.to_owned());
 }
 
 #[cfg(test)]
@@ -179,6 +183,29 @@ mod tests {
             let names = collect_template_names(&job_with_templates, &templates).unwrap();
 
             assert_eq!(names, vec![".parent".into(), ".template-b".to_string()])
+        }
+    }
+
+    mod test_merging_of_configurations {
+        use super::*;
+
+        #[test]
+        fn merges_variables() {
+            let mut source = GitLabConfiguration::default();
+            source.variables.push(("VARIABLE_A".into(), "1".into()));
+
+            let mut target = GitLabConfiguration::default();
+            source.variables.push(("VARIABLE_B".into(), "2".into()));
+
+            merge_configuration(&source, &mut target);
+
+            assert_eq!(
+                target.variables,
+                vec![
+                    ("VARIABLE_A".into(), "1".into()),
+                    ("VARIABLE_B".into(), "2".into())
+                ]
+            );
         }
     }
 }

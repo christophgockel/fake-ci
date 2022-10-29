@@ -2,15 +2,29 @@ mod configuration;
 mod deserialise;
 mod merge;
 
-use crate::gitlab::configuration::GitLabConfiguration;
-use crate::gitlab::merge::{collect_template_names, merge_image, merge_script, merge_variables};
+use crate::file::FileAccess;
+use crate::gitlab::configuration::{GitLabConfiguration, Include, OneOrMoreIncludes};
+use crate::gitlab::merge::{
+    collect_template_names, merge_configuration, merge_image, merge_script, merge_variables,
+};
 use std::io::ErrorKind;
 
-pub fn parse<R>(reader: R) -> Result<GitLabConfiguration, Box<dyn std::error::Error>>
+pub fn parse<R>(
+    reader: R,
+    file_access: &impl FileAccess,
+) -> Result<GitLabConfiguration, Box<dyn std::error::Error>>
 where
     R: std::io::Read,
 {
     let mut configuration: GitLabConfiguration = serde_yaml::from_reader(reader)?;
+
+    if let Some(additional_includes) = &configuration.include {
+        let additional_configurations = read_all(additional_includes, file_access)?;
+
+        for additional_configuration in additional_configurations {
+            merge_configuration(&additional_configuration, &mut configuration);
+        }
+    }
 
     for (_name, job) in configuration.jobs.iter_mut() {
         let required_template_names = collect_template_names(job, &configuration.templates)?;
@@ -42,15 +56,17 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::file::StubFiles;
 
     #[test]
     fn parses_yaml_configuration() {
+        let file_dummy = StubFiles::default();
         let content = "
             stages:
               - test
         ";
 
-        let configuration = parse(content.as_bytes()).unwrap();
+        let configuration = parse(content.as_bytes(), &file_dummy).unwrap();
 
         assert_eq!(configuration.stages, vec!["test".to_string(),]);
     }
@@ -60,6 +76,7 @@ mod tests {
 
         #[test]
         fn prepends_global_variables_into_jobs() {
+            let file_dummy = StubFiles::default();
             let content = "
                 variables:
                   VARIABLE_A: 1
@@ -69,7 +86,7 @@ mod tests {
                     VARIABLE_B: 2
             ";
 
-            let configuration = parse(content.as_bytes()).unwrap();
+            let configuration = parse(content.as_bytes(), &file_dummy).unwrap();
             let job = configuration.jobs.get("job").unwrap();
 
             assert_eq!(
@@ -83,6 +100,7 @@ mod tests {
 
         #[test]
         fn insert_template_variables_between_global_and_job_ones() {
+            let file_dummy = StubFiles::default();
             let content = "
                 variables:
                   VARIABLE_A: 1
@@ -98,7 +116,7 @@ mod tests {
                     VARIABLE_C: 3
             ";
 
-            let configuration = parse(content.as_bytes()).unwrap();
+            let configuration = parse(content.as_bytes(), &file_dummy).unwrap();
             let job = configuration.jobs.get("job").unwrap();
 
             assert_eq!(
@@ -118,6 +136,7 @@ mod tests {
 
         #[test]
         fn uses_global_after_script_when_job_does_not_define_one() {
+            let file_dummy = StubFiles::default();
             let content = "
                 default:
                   after_script:
@@ -128,7 +147,7 @@ mod tests {
                     DUMMY: true
             ";
 
-            let configuration = parse(content.as_bytes()).unwrap();
+            let configuration = parse(content.as_bytes(), &file_dummy).unwrap();
             let job = configuration.jobs.get("job").unwrap();
 
             assert_eq!(
@@ -139,6 +158,7 @@ mod tests {
 
         #[test]
         fn uses_template_after_script_when_job_does_not_define_one() {
+            let file_dummy = StubFiles::default();
             let content = "
                 default:
                   after_script:
@@ -153,7 +173,7 @@ mod tests {
                     - .template
             ";
 
-            let configuration = parse(content.as_bytes()).unwrap();
+            let configuration = parse(content.as_bytes(), &file_dummy).unwrap();
             let job = configuration.jobs.get("job").unwrap();
 
             assert_eq!(
@@ -164,6 +184,7 @@ mod tests {
 
         #[test]
         fn uses_job_after_script_when_job_does_define_one() {
+            let file_dummy = StubFiles::default();
             let content = "
                 default:
                   after_script:
@@ -180,7 +201,7 @@ mod tests {
                     - job_command.sh
             ";
 
-            let configuration = parse(content.as_bytes()).unwrap();
+            let configuration = parse(content.as_bytes(), &file_dummy).unwrap();
             let job = configuration.jobs.get("job").unwrap();
 
             assert_eq!(
@@ -196,6 +217,7 @@ mod tests {
 
         #[test]
         fn uses_global_before_script_when_job_does_not_define_one() {
+            let file_dummy = StubFiles::default();
             let content = "
                 default:
                   before_script:
@@ -206,7 +228,7 @@ mod tests {
                     DUMMY: true
             ";
 
-            let configuration = parse(content.as_bytes()).unwrap();
+            let configuration = parse(content.as_bytes(), &file_dummy).unwrap();
             let job = configuration.jobs.get("job").unwrap();
 
             assert_eq!(
@@ -217,6 +239,7 @@ mod tests {
 
         #[test]
         fn uses_template_before_script_when_job_does_not_define_one() {
+            let file_dummy = StubFiles::default();
             let content = "
                 default:
                   before_script:
@@ -231,7 +254,7 @@ mod tests {
                     - .template
             ";
 
-            let configuration = parse(content.as_bytes()).unwrap();
+            let configuration = parse(content.as_bytes(), &file_dummy).unwrap();
             let job = configuration.jobs.get("job").unwrap();
 
             assert_eq!(
@@ -242,6 +265,7 @@ mod tests {
 
         #[test]
         fn uses_job_before_script_when_job_does_define_one() {
+            let file_dummy = StubFiles::default();
             let content = "
                 default:
                   before_script:
@@ -258,7 +282,7 @@ mod tests {
                     - job_command.sh
             ";
 
-            let configuration = parse(content.as_bytes()).unwrap();
+            let configuration = parse(content.as_bytes(), &file_dummy).unwrap();
             let job = configuration.jobs.get("job").unwrap();
 
             assert_eq!(
@@ -273,6 +297,7 @@ mod tests {
 
         #[test]
         fn uses_global_image_when_job_does_not_define_one() {
+            let file_dummy = StubFiles::default();
             let content = "
                 default:
                   image: default:image
@@ -282,7 +307,7 @@ mod tests {
                     DUMMY: true
             ";
 
-            let configuration = parse(content.as_bytes()).unwrap();
+            let configuration = parse(content.as_bytes(), &file_dummy).unwrap();
             let job = configuration.jobs.get("job").unwrap();
 
             assert_eq!(job.image, Some("default:image".into()));
@@ -290,6 +315,7 @@ mod tests {
 
         #[test]
         fn uses_template_image_when_job_does_not_define_one() {
+            let file_dummy = StubFiles::default();
             let content = "
                 default:
                   image: default:image
@@ -302,7 +328,7 @@ mod tests {
                     - .template
             ";
 
-            let configuration = parse(content.as_bytes()).unwrap();
+            let configuration = parse(content.as_bytes(), &file_dummy).unwrap();
             let job = configuration.jobs.get("job").unwrap();
 
             assert_eq!(job.image, Some("template:image".into()));
@@ -310,6 +336,7 @@ mod tests {
 
         #[test]
         fn uses_job_image_when_job_does_define_one() {
+            let file_dummy = StubFiles::default();
             let content = "
                 default:
                   image: default:image
@@ -323,10 +350,56 @@ mod tests {
                   image: job:image
             ";
 
-            let configuration = parse(content.as_bytes()).unwrap();
+            let configuration = parse(content.as_bytes(), &file_dummy).unwrap();
             let job = configuration.jobs.get("job").unwrap();
 
             assert_eq!(job.image, Some("job:image".into()));
         }
     }
+
+    mod test_includes {
+        use super::*;
+        use crate::file::StubFiles;
+
+        #[test]
+        fn resolves_and_adds_variables_from_local_files() {
+            let other_content = "
+                variables:
+                  OTHER_VARIABLE: true
+            ";
+            let files = StubFiles::with_file("other.yml", other_content);
+            let content = "
+                include:
+                  local: other.yml
+            ";
+
+            let config = parse(content.as_bytes(), &files).unwrap();
+
+            assert_eq!(config.variables.len(), 1);
+        }
+    }
+}
+
+fn read_all(
+    includes: &OneOrMoreIncludes,
+    file_access: &impl FileAccess,
+) -> Result<Vec<GitLabConfiguration>, Box<dyn std::error::Error>> {
+    let mut included_configurations = vec![];
+
+    match includes {
+        OneOrMoreIncludes::Single(include) => match include {
+            Include::Local(local_include) => {
+                let content = file_access.read_local_file(&local_include.local)?;
+                let new_config = parse(*content, file_access)?;
+
+                included_configurations.push(new_config);
+            }
+            Include::File(_) => {}
+            Include::Remote(_) => {}
+            Include::Template(_) => {}
+        },
+        OneOrMoreIncludes::Multiple(_) => {}
+    }
+
+    Ok(included_configurations)
 }

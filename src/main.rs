@@ -1,6 +1,8 @@
+pub mod file;
 mod gitlab;
 
 use crate::gitlab::parse;
+use file::RealFileSystem;
 use std::env;
 use std::env::current_dir;
 use std::io::ErrorKind;
@@ -25,8 +27,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         path
     };
 
+    let file_access = RealFileSystem::default();
     let file = std::fs::File::open(path_to_config_file)?;
-    let configuration = parse(file)?;
+    let configuration = parse(file, &file_access)?;
 
     let content = serde_yaml::to_string(&configuration).unwrap();
 
