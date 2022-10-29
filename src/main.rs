@@ -1,6 +1,6 @@
 mod gitlab;
 
-use serde_yaml::Value;
+use crate::gitlab::parse;
 use std::env;
 use std::env::current_dir;
 use std::io::ErrorKind;
@@ -26,7 +26,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let file = std::fs::File::open(path_to_config_file)?;
-    let configuration: Value = serde_yaml::from_reader(file)?;
+    let configuration = parse(file)?;
 
     let content = serde_yaml::to_string(&configuration).unwrap();
 
