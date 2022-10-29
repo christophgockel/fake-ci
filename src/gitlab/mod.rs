@@ -190,67 +190,6 @@ mod tests {
         }
     }
 
-    mod test_merge_precedence_of_image_names {
-        use super::*;
-
-        #[test]
-        fn uses_global_image_when_job_does_not_define_one() {
-            let content = "
-                default:
-                  image: default:image
-
-                job:
-                  variables:
-                    DUMMY: true
-            ";
-
-            let configuration = parse(content.as_bytes()).unwrap();
-            let job = configuration.jobs.get("job").unwrap();
-
-            assert_eq!(job.image, Some("default:image".into()));
-        }
-
-        #[test]
-        fn uses_template_image_when_job_does_not_define_one() {
-            let content = "
-                default:
-                  image: default:image
-
-                .template:
-                  image: template:image
-
-                job:
-                  extends:
-                    - .template
-            ";
-
-            let configuration = parse(content.as_bytes()).unwrap();
-            let job = configuration.jobs.get("job").unwrap();
-
-            assert_eq!(job.image, Some("template:image".into()));
-        }
-
-        #[test]
-        fn uses_job_image_when_job_does_define_one() {
-            let content = "
-                default:
-                  image: default:image
-
-                .template:
-                  image: template:image
-
-                job:
-                  extends:
-                    - .template
-                  image: job:image
-            ";
-
-            let configuration = parse(content.as_bytes()).unwrap();
-            let job = configuration.jobs.get("job").unwrap();
-
-            assert_eq!(job.image, Some("job:image".into()));
-        }
-    }
     mod test_merge_precedence_of_before_scripts {
         use super::*;
         use crate::gitlab::configuration::ListOfStrings;
@@ -326,6 +265,68 @@ mod tests {
                 job.before_script,
                 Some(ListOfStrings(vec!["job_command.sh".into()]))
             );
+        }
+    }
+
+    mod test_merge_precedence_of_image_names {
+        use super::*;
+
+        #[test]
+        fn uses_global_image_when_job_does_not_define_one() {
+            let content = "
+                default:
+                  image: default:image
+
+                job:
+                  variables:
+                    DUMMY: true
+            ";
+
+            let configuration = parse(content.as_bytes()).unwrap();
+            let job = configuration.jobs.get("job").unwrap();
+
+            assert_eq!(job.image, Some("default:image".into()));
+        }
+
+        #[test]
+        fn uses_template_image_when_job_does_not_define_one() {
+            let content = "
+                default:
+                  image: default:image
+
+                .template:
+                  image: template:image
+
+                job:
+                  extends:
+                    - .template
+            ";
+
+            let configuration = parse(content.as_bytes()).unwrap();
+            let job = configuration.jobs.get("job").unwrap();
+
+            assert_eq!(job.image, Some("template:image".into()));
+        }
+
+        #[test]
+        fn uses_job_image_when_job_does_define_one() {
+            let content = "
+                default:
+                  image: default:image
+
+                .template:
+                  image: template:image
+
+                job:
+                  extends:
+                    - .template
+                  image: job:image
+            ";
+
+            let configuration = parse(content.as_bytes()).unwrap();
+            let job = configuration.jobs.get("job").unwrap();
+
+            assert_eq!(job.image, Some("job:image".into()));
         }
     }
 }
