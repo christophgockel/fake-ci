@@ -22,6 +22,7 @@ where
                 .ok_or_else(|| std::io::Error::new(ErrorKind::NotFound, "template not found"))?;
 
             merge_variables(&template.variables, &mut job.variables);
+            merge_script(&template.after_script, &mut job.after_script);
         }
 
         merge_variables(&configuration.variables, &mut job.variables);
@@ -135,13 +136,44 @@ mod tests {
         }
 
         #[test]
+        fn uses_template_after_script_when_job_does_not_define_one() {
+            let content = "
+                default:
+                  after_script:
+                    - default_command.sh
+
+                .template:
+                  after_script:
+                    - template_command.sh
+
+                job:
+                  extends:
+                    - .template
+            ";
+
+            let configuration = parse(content.as_bytes()).unwrap();
+            let job = configuration.jobs.get("job").unwrap();
+
+            assert_eq!(
+                job.after_script,
+                Some(ListOfStrings(vec!["template_command.sh".into()]))
+            );
+        }
+
+        #[test]
         fn uses_job_after_script_when_job_does_define_one() {
             let content = "
                 default:
                   after_script:
                     - default_command.sh
 
+                .template:
+                  after_script:
+                    - template_command.sh
+
                 job:
+                  extends:
+                    - .template
                   after_script:
                     - job_command.sh
             ";
