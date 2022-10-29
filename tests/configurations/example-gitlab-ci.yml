@@ -1,0 +1,15 @@
+stages:
+  - build
+  - test
+
+build:
+  stage: build
+  image: alpine:latest
+  script:
+    - echo "Running build-job."
+
+test:
+  stage: test
+  image: alpine:latest
+  script:
+    - echo "Running test-job."
