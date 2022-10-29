@@ -145,8 +145,10 @@ mod tests {
         #[test]
         fn fails_when_template_does_not_exist() {
             let empty_templates = HashMap::new();
-            let mut job_with_templates = Job::default();
-            job_with_templates.extends = Some(ListOfStrings(vec![".template-name".into()]));
+            let job_with_templates = Job {
+                extends: Some(ListOfStrings(vec![".template-name".into()])),
+                ..Default::default()
+            };
 
             let result = collect_template_names(&job_with_templates, &empty_templates);
 
@@ -159,8 +161,10 @@ mod tests {
                 (".template-a".into(), Job::default()),
                 (".template-b".into(), Job::default()),
             ]);
-            let mut job_with_templates = Job::default();
-            job_with_templates.extends = Some(ListOfStrings(vec![".template-b".into()]));
+            let job_with_templates = Job {
+                extends: Some(ListOfStrings(vec![".template-b".into()])),
+                ..Default::default()
+            };
 
             let names = collect_template_names(&job_with_templates, &templates).unwrap();
 
@@ -169,16 +173,20 @@ mod tests {
 
         #[test]
         fn looks_further_into_templates_to_collect_all_their_templates_ordered_by_hierarchy() {
-            let mut template_with_additional_extend = Job::default();
-            template_with_additional_extend.extends = Some(ListOfStrings(vec![".parent".into()]));
+            let template_with_additional_extend = Job {
+                extends: Some(ListOfStrings(vec![".parent".into()])),
+                ..Default::default()
+            };
 
             let templates = HashMap::from([
                 (".template-a".into(), Job::default()),
                 (".template-b".into(), template_with_additional_extend),
                 (".parent".into(), Job::default()),
             ]);
-            let mut job_with_templates = Job::default();
-            job_with_templates.extends = Some(ListOfStrings(vec![".template-b".into()]));
+            let job_with_templates = Job {
+                extends: Some(ListOfStrings(vec![".template-b".into()])),
+                ..Default::default()
+            };
 
             let names = collect_template_names(&job_with_templates, &templates).unwrap();
 
