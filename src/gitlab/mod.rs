@@ -23,6 +23,7 @@ where
 
             merge_variables(&template.variables, &mut job.variables);
             merge_script(&template.after_script, &mut job.after_script);
+            merge_script(&template.before_script, &mut job.before_script);
             merge_image(&template.image, &mut job.image);
         }
 
@@ -30,8 +31,8 @@ where
 
         if let Some(defaults) = &configuration.default {
             merge_script(&defaults.after_script, &mut job.after_script);
-            merge_image(&defaults.image, &mut job.image);
             merge_script(&defaults.before_script, &mut job.before_script);
+            merge_image(&defaults.image, &mut job.image);
         }
     }
 
@@ -276,12 +277,44 @@ mod tests {
         }
 
         #[test]
+        fn uses_template_before_script_when_job_does_not_define_one() {
+            let content = "
+                default:
+                  before_script:
+                    - default_command.sh
+
+                .template:
+                  before_script:
+                    - template_command.sh
+
+                job:
+                  extends:
+                    - .template
+            ";
+
+            let configuration = parse(content.as_bytes()).unwrap();
+            let job = configuration.jobs.get("job").unwrap();
+
+            assert_eq!(
+                job.before_script,
+                Some(ListOfStrings(vec!["template_command.sh".into()]))
+            );
+        }
+
+        #[test]
         fn uses_job_before_script_when_job_does_define_one() {
             let content = "
                 default:
                   before_script:
                     - default_command.sh
+
+                .template:
+                  before_script:
+                    - template_command.sh
+
                 job:
+                  extends:
+                    - .template
                   before_script:
                     - job_command.sh
             ";
