@@ -3,7 +3,8 @@ mod deserialise;
 mod merge;
 
 use crate::gitlab::configuration::GitLabConfiguration;
-use crate::gitlab::merge::{merge_image, merge_script, merge_variables};
+use crate::gitlab::merge::{collect_template_names, merge_image, merge_script, merge_variables};
+use std::io::ErrorKind;
 
 pub fn parse<R>(reader: R) -> Result<GitLabConfiguration, Box<dyn std::error::Error>>
 where
@@ -12,6 +13,17 @@ where
     let mut configuration: GitLabConfiguration = serde_yaml::from_reader(reader)?;
 
     for (_name, job) in configuration.jobs.iter_mut() {
+        let required_template_names = collect_template_names(job, &configuration.templates)?;
+
+        for template_name in required_template_names {
+            let template = configuration
+                .templates
+                .get(&template_name)
+                .ok_or_else(|| std::io::Error::new(ErrorKind::NotFound, "template not found"))?;
+
+            merge_variables(&template.variables, &mut job.variables);
+        }
+
         merge_variables(&configuration.variables, &mut job.variables);
 
         if let Some(defaults) = &configuration.default {
@@ -62,6 +74,36 @@ mod tests {
                 vec![
                     ("VARIABLE_A".into(), "1".into()),
                     ("VARIABLE_B".into(), "2".into())
+                ]
+            );
+        }
+
+        #[test]
+        fn insert_template_variables_between_global_and_job_ones() {
+            let content = "
+                variables:
+                  VARIABLE_A: 1
+
+                .template:
+                  variables:
+                    VARIABLE_B: 2
+
+                job:
+                  extends:
+                    - .template
+                  variables:
+                    VARIABLE_C: 3
+            ";
+
+            let configuration = parse(content.as_bytes()).unwrap();
+            let job = configuration.jobs.get("job").unwrap();
+
+            assert_eq!(
+                job.variables,
+                vec![
+                    ("VARIABLE_A".into(), "1".into()),
+                    ("VARIABLE_B".into(), "2".into()),
+                    ("VARIABLE_C".into(), "3".into()),
                 ]
             );
         }
