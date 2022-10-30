@@ -44,6 +44,7 @@ pub fn collect_template_names(
 pub fn merge_configuration(source: GitLabConfiguration, target: &mut GitLabConfiguration) {
     target.variables.splice(0..0, source.variables.to_owned());
     target.templates.extend(source.templates);
+    target.jobs.extend(source.jobs);
 }
 
 #[cfg(test)]
@@ -232,6 +233,19 @@ mod tests {
             merge_configuration(source, &mut target);
 
             assert_eq!(target.templates.len(), 2);
+        }
+
+        #[test]
+        fn merges_jobs() {
+            let mut source = GitLabConfiguration::default();
+            source.jobs.insert("job-a".into(), Job::default());
+
+            let mut target = GitLabConfiguration::default();
+            source.jobs.insert("job-b".into(), Job::default());
+
+            merge_configuration(source, &mut target);
+
+            assert_eq!(target.jobs.len(), 2);
         }
     }
 }
