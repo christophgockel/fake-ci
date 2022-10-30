@@ -9,23 +9,31 @@ use crate::gitlab::merge::{
 };
 use std::io::ErrorKind;
 
-pub fn parse<R>(
-    reader: R,
-    file_access: &impl FileAccess,
-) -> Result<GitLabConfiguration, Box<dyn std::error::Error>>
+pub fn parse<R>(reader: R) -> Result<GitLabConfiguration, Box<dyn std::error::Error>>
 where
     R: std::io::Read,
 {
-    let mut configuration: GitLabConfiguration = serde_yaml::from_reader(reader)?;
+    let configuration: GitLabConfiguration = serde_yaml::from_reader(reader)?;
 
-    if let Some(additional_includes) = &configuration.include {
-        let additional_configurations = read_all(additional_includes, file_access)?;
+    Ok(configuration)
+}
 
-        for additional_configuration in additional_configurations {
-            merge_configuration(&additional_configuration, &mut configuration);
-        }
+pub fn merge_all(
+    additional_configurations: Vec<GitLabConfiguration>,
+    configuration: &mut GitLabConfiguration,
+) -> Result<(), Box<dyn std::error::Error>> {
+    for additional_configuration in additional_configurations {
+        merge_configuration(&additional_configuration, configuration);
     }
 
+    merge_jobs(configuration)?;
+
+    Ok(())
+}
+
+pub fn merge_jobs(
+    configuration: &mut GitLabConfiguration,
+) -> Result<(), Box<dyn std::error::Error>> {
     for (_name, job) in configuration.jobs.iter_mut() {
         let required_template_names = collect_template_names(job, &configuration.templates)?;
 
@@ -50,25 +58,70 @@ where
         }
     }
 
-    Ok(configuration)
+    Ok(())
+}
+
+pub fn parse_all(
+    maybe_includes: &Option<OneOrMoreIncludes>,
+    file_access: &impl FileAccess,
+) -> Result<Vec<GitLabConfiguration>, Box<dyn std::error::Error>> {
+    let mut included_configurations = vec![];
+
+    if let Some(includes) = maybe_includes {
+        match includes {
+            OneOrMoreIncludes::Single(include) => {
+                included_configurations.push(read_and_parse(include, file_access)?);
+            }
+            OneOrMoreIncludes::Multiple(includes) => {
+                for include in includes {
+                    included_configurations.push(read_and_parse(include, file_access)?);
+                }
+            }
+        }
+    }
+
+    Ok(included_configurations)
+}
+
+fn read_and_parse(
+    include: &Include,
+    file_access: &impl FileAccess,
+) -> Result<GitLabConfiguration, Box<dyn std::error::Error>> {
+    match include {
+        Include::Local(local_include) => {
+            let content = file_access.read_local_file(&local_include.local)?;
+            let configuration = parse(*content)?;
+
+            Ok(configuration)
+        }
+        Include::File(_) => todo!(),
+        Include::Remote(_) => todo!(),
+        Include::Template(_) => todo!(),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::file::StubFiles;
+
+    fn parse_and_merge(content: &str) -> Result<GitLabConfiguration, Box<dyn std::error::Error>> {
+        let mut configuration = parse(content.as_bytes())?;
+
+        merge_jobs(&mut configuration)?;
+
+        Ok(configuration)
+    }
 
     #[test]
     fn parses_yaml_configuration() {
-        let file_dummy = StubFiles::default();
         let content = "
             stages:
               - test
         ";
 
-        let configuration = parse(content.as_bytes(), &file_dummy).unwrap();
+        let configuration = parse_and_merge(content).unwrap();
 
-        assert_eq!(configuration.stages, vec!["test".to_string(),]);
+        assert_eq!(configuration.stages, vec!["test".to_string()]);
     }
 
     mod test_merge_precedence_of_variables {
@@ -76,7 +129,6 @@ mod tests {
 
         #[test]
         fn prepends_global_variables_into_jobs() {
-            let file_dummy = StubFiles::default();
             let content = "
                 variables:
                   VARIABLE_A: 1
@@ -86,7 +138,7 @@ mod tests {
                     VARIABLE_B: 2
             ";
 
-            let configuration = parse(content.as_bytes(), &file_dummy).unwrap();
+            let configuration = parse_and_merge(content).unwrap();
             let job = configuration.jobs.get("job").unwrap();
 
             assert_eq!(
@@ -100,7 +152,6 @@ mod tests {
 
         #[test]
         fn insert_template_variables_between_global_and_job_ones() {
-            let file_dummy = StubFiles::default();
             let content = "
                 variables:
                   VARIABLE_A: 1
@@ -116,7 +167,7 @@ mod tests {
                     VARIABLE_C: 3
             ";
 
-            let configuration = parse(content.as_bytes(), &file_dummy).unwrap();
+            let configuration = parse_and_merge(content).unwrap();
             let job = configuration.jobs.get("job").unwrap();
 
             assert_eq!(
@@ -136,7 +187,6 @@ mod tests {
 
         #[test]
         fn uses_global_after_script_when_job_does_not_define_one() {
-            let file_dummy = StubFiles::default();
             let content = "
                 default:
                   after_script:
@@ -147,7 +197,7 @@ mod tests {
                     DUMMY: true
             ";
 
-            let configuration = parse(content.as_bytes(), &file_dummy).unwrap();
+            let configuration = parse_and_merge(content).unwrap();
             let job = configuration.jobs.get("job").unwrap();
 
             assert_eq!(
@@ -158,7 +208,6 @@ mod tests {
 
         #[test]
         fn uses_template_after_script_when_job_does_not_define_one() {
-            let file_dummy = StubFiles::default();
             let content = "
                 default:
                   after_script:
@@ -173,7 +222,7 @@ mod tests {
                     - .template
             ";
 
-            let configuration = parse(content.as_bytes(), &file_dummy).unwrap();
+            let configuration = parse_and_merge(content).unwrap();
             let job = configuration.jobs.get("job").unwrap();
 
             assert_eq!(
@@ -184,7 +233,6 @@ mod tests {
 
         #[test]
         fn uses_job_after_script_when_job_does_define_one() {
-            let file_dummy = StubFiles::default();
             let content = "
                 default:
                   after_script:
@@ -201,7 +249,7 @@ mod tests {
                     - job_command.sh
             ";
 
-            let configuration = parse(content.as_bytes(), &file_dummy).unwrap();
+            let configuration = parse_and_merge(content).unwrap();
             let job = configuration.jobs.get("job").unwrap();
 
             assert_eq!(
@@ -217,7 +265,6 @@ mod tests {
 
         #[test]
         fn uses_global_before_script_when_job_does_not_define_one() {
-            let file_dummy = StubFiles::default();
             let content = "
                 default:
                   before_script:
@@ -228,7 +275,7 @@ mod tests {
                     DUMMY: true
             ";
 
-            let configuration = parse(content.as_bytes(), &file_dummy).unwrap();
+            let configuration = parse_and_merge(content).unwrap();
             let job = configuration.jobs.get("job").unwrap();
 
             assert_eq!(
@@ -239,7 +286,6 @@ mod tests {
 
         #[test]
         fn uses_template_before_script_when_job_does_not_define_one() {
-            let file_dummy = StubFiles::default();
             let content = "
                 default:
                   before_script:
@@ -254,7 +300,7 @@ mod tests {
                     - .template
             ";
 
-            let configuration = parse(content.as_bytes(), &file_dummy).unwrap();
+            let configuration = parse_and_merge(content).unwrap();
             let job = configuration.jobs.get("job").unwrap();
 
             assert_eq!(
@@ -265,7 +311,6 @@ mod tests {
 
         #[test]
         fn uses_job_before_script_when_job_does_define_one() {
-            let file_dummy = StubFiles::default();
             let content = "
                 default:
                   before_script:
@@ -282,7 +327,7 @@ mod tests {
                     - job_command.sh
             ";
 
-            let configuration = parse(content.as_bytes(), &file_dummy).unwrap();
+            let configuration = parse_and_merge(content).unwrap();
             let job = configuration.jobs.get("job").unwrap();
 
             assert_eq!(
@@ -297,7 +342,6 @@ mod tests {
 
         #[test]
         fn uses_global_image_when_job_does_not_define_one() {
-            let file_dummy = StubFiles::default();
             let content = "
                 default:
                   image: default:image
@@ -307,7 +351,7 @@ mod tests {
                     DUMMY: true
             ";
 
-            let configuration = parse(content.as_bytes(), &file_dummy).unwrap();
+            let configuration = parse_and_merge(content).unwrap();
             let job = configuration.jobs.get("job").unwrap();
 
             assert_eq!(job.image, Some("default:image".into()));
@@ -315,7 +359,6 @@ mod tests {
 
         #[test]
         fn uses_template_image_when_job_does_not_define_one() {
-            let file_dummy = StubFiles::default();
             let content = "
                 default:
                   image: default:image
@@ -328,7 +371,7 @@ mod tests {
                     - .template
             ";
 
-            let configuration = parse(content.as_bytes(), &file_dummy).unwrap();
+            let configuration = parse_and_merge(content).unwrap();
             let job = configuration.jobs.get("job").unwrap();
 
             assert_eq!(job.image, Some("template:image".into()));
@@ -336,7 +379,6 @@ mod tests {
 
         #[test]
         fn uses_job_image_when_job_does_define_one() {
-            let file_dummy = StubFiles::default();
             let content = "
                 default:
                   image: default:image
@@ -350,19 +392,19 @@ mod tests {
                   image: job:image
             ";
 
-            let configuration = parse(content.as_bytes(), &file_dummy).unwrap();
+            let configuration = parse_and_merge(content).unwrap();
             let job = configuration.jobs.get("job").unwrap();
 
             assert_eq!(job.image, Some("job:image".into()));
         }
     }
 
-    mod test_includes {
+    mod test_include_parsing {
         use super::*;
         use crate::file::StubFiles;
 
         #[test]
-        fn resolves_and_adds_variables_from_local_files() {
+        fn resolves_local_files() {
             let other_content = "
                 variables:
                   OTHER_VARIABLE: true
@@ -373,13 +415,14 @@ mod tests {
                   local: other.yml
             ";
 
-            let config = parse(content.as_bytes(), &files).unwrap();
+            let configuration = parse_and_merge(content).unwrap();
+            let additional_configurations = parse_all(&configuration.include, &files).unwrap();
 
-            assert_eq!(config.variables.len(), 1);
+            assert_eq!(additional_configurations.len(), 1);
         }
 
         #[test]
-        fn resolves_and_adds_variables_from_multiple_local_files() {
+        fn resolves_multiple_local_files() {
             let file_a_content = "
                 variables:
                   FILE_A: value a
@@ -398,46 +441,30 @@ mod tests {
                   - local: file-b.yml
             ";
 
-            let config = parse(content.as_bytes(), &files).unwrap();
+            let configuration = parse_and_merge(content).unwrap();
+            let additional_configurations = parse_all(&configuration.include, &files).unwrap();
 
-            assert_eq!(config.variables.len(), 2);
-        }
-    }
-}
-
-fn read_all(
-    includes: &OneOrMoreIncludes,
-    file_access: &impl FileAccess,
-) -> Result<Vec<GitLabConfiguration>, Box<dyn std::error::Error>> {
-    let mut included_configurations = vec![];
-
-    match includes {
-        OneOrMoreIncludes::Single(include) => {
-            included_configurations.push(read_and_parse(include, file_access)?);
-        }
-        OneOrMoreIncludes::Multiple(includes) => {
-            for include in includes {
-                included_configurations.push(read_and_parse(include, file_access)?);
-            }
+            assert_eq!(additional_configurations.len(), 2);
         }
     }
 
-    Ok(included_configurations)
-}
+    mod test_merging_of_configurations {
+        use super::*;
 
-fn read_and_parse(
-    include: &Include,
-    file_access: &impl FileAccess,
-) -> Result<GitLabConfiguration, Box<dyn std::error::Error>> {
-    match include {
-        Include::Local(local_include) => {
-            let content = file_access.read_local_file(&local_include.local)?;
-            let configuration = parse(*content, file_access)?;
+        #[test]
+        fn adds_variables_from_other_configurations() {
+            let other_content = "
+                variables:
+                  OTHER_VARIABLE: true
+            ";
+            let content = "";
 
-            Ok(configuration)
+            let other_configuration = parse_and_merge(other_content).unwrap();
+            let mut configuration = parse_and_merge(content).unwrap();
+
+            merge_all(vec![other_configuration], &mut configuration).unwrap();
+
+            assert_eq!(configuration.variables.len(), 1);
         }
-        Include::File(_) => todo!(),
-        Include::Remote(_) => todo!(),
-        Include::Template(_) => todo!(),
     }
 }

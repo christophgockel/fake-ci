@@ -2,7 +2,7 @@ pub mod file;
 mod git;
 mod gitlab;
 
-use crate::gitlab::parse;
+use crate::gitlab::{merge_all, parse, parse_all};
 use file::RealFileSystem;
 use std::env;
 use std::env::current_dir;
@@ -30,7 +30,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let file_access = RealFileSystem::default();
     let file = std::fs::File::open(path_to_config_file)?;
-    let configuration = parse(file, &file_access)?;
+
+    let mut configuration = parse(file)?;
+    let additional_configurations = parse_all(&configuration.include, &file_access)?;
+    merge_all(additional_configurations, &mut configuration)?;
 
     let content = serde_yaml::to_string(&configuration).unwrap();
 
