@@ -121,7 +121,16 @@ async fn read_and_parse(
 
             Ok(vec![configuration])
         }
-        Include::Template(_) => todo!(),
+        Include::Template(template_include) => {
+            let url = format!(
+                "https://gitlab.com/gitlab-org/gitlab/-/raw/master/lib/gitlab/ci/templates/{}",
+                &template_include.template
+            );
+            let content = file_access.read_remote_file(&url).await?;
+            let configuration = parse(*content)?;
+
+            Ok(vec![configuration])
+        }
     }
 }
 
@@ -531,6 +540,29 @@ mod tests {
             let content = "
                 include:
                   remote: https://example.com/path/to/file.yml
+            ";
+
+            let configuration = parse_and_merge(content).unwrap();
+            let additional_configurations = parse_all(&configuration.include, &files, &git_dummy)
+                .await
+                .unwrap();
+
+            assert_eq!(additional_configurations.len(), 1);
+        }
+
+        #[tokio::test]
+        async fn resolves_template_files() {
+            let git_dummy = GitDetails::default();
+            let file_content = "
+                variables:
+                  FILE: value
+            ";
+            let mut files = StubFiles::default();
+            files.add_remote_file("https://gitlab.com/gitlab-org/gitlab/-/raw/master/lib/gitlab/ci/templates/Rust.gitlab-ci.yml", file_content);
+
+            let content = "
+                include:
+                  template: Rust.gitlab-ci.yml
             ";
 
             let configuration = parse_and_merge(content).unwrap();
