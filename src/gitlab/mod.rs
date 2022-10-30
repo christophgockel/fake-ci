@@ -3,6 +3,7 @@ mod deserialise;
 mod merge;
 
 use crate::file::FileAccess;
+use crate::git::GitDetails;
 use crate::gitlab::configuration::{GitLabConfiguration, Include, OneOrMoreIncludes};
 use crate::gitlab::merge::{
     collect_template_names, merge_configuration, merge_image, merge_script, merge_variables,
@@ -61,20 +62,23 @@ pub fn merge_jobs(
     Ok(())
 }
 
-pub fn parse_all(
+pub async fn parse_all(
     maybe_includes: &Option<OneOrMoreIncludes>,
     file_access: &impl FileAccess,
+    git_details: &GitDetails,
 ) -> Result<Vec<GitLabConfiguration>, Box<dyn std::error::Error>> {
     let mut included_configurations = vec![];
 
     if let Some(includes) = maybe_includes {
         match includes {
             OneOrMoreIncludes::Single(include) => {
-                included_configurations.push(read_and_parse(include, file_access)?);
+                included_configurations
+                    .extend(read_and_parse(include, file_access, git_details).await?);
             }
             OneOrMoreIncludes::Multiple(includes) => {
                 for include in includes {
-                    included_configurations.push(read_and_parse(include, file_access)?);
+                    included_configurations
+                        .extend(read_and_parse(include, file_access, git_details).await?);
                 }
             }
         }
@@ -83,18 +87,34 @@ pub fn parse_all(
     Ok(included_configurations)
 }
 
-fn read_and_parse(
+async fn read_and_parse(
     include: &Include,
     file_access: &impl FileAccess,
-) -> Result<GitLabConfiguration, Box<dyn std::error::Error>> {
+    git_details: &GitDetails,
+) -> Result<Vec<GitLabConfiguration>, Box<dyn std::error::Error>> {
     match include {
         Include::Local(local_include) => {
             let content = file_access.read_local_file(&local_include.local)?;
             let configuration = parse(*content)?;
 
-            Ok(configuration)
+            Ok(vec![configuration])
         }
-        Include::File(_) => todo!(),
+        Include::File(file_include) => {
+            let mut configurations = vec![];
+
+            for file in &file_include.file {
+                let url = format!(
+                    "{}/{}/-/raw/{}/{}",
+                    &git_details.host, file_include.project, file_include.r#ref, file
+                );
+                let content = file_access.read_remote_file(&url).await?;
+                let configuration = parse(*content)?;
+
+                configurations.push(configuration);
+            }
+
+            Ok(configurations)
+        }
         Include::Remote(_) => todo!(),
         Include::Template(_) => todo!(),
     }
@@ -403,8 +423,9 @@ mod tests {
         use super::*;
         use crate::file::StubFiles;
 
-        #[test]
-        fn resolves_local_files() {
+        #[tokio::test]
+        async fn resolves_local_files() {
+            let git_dummy = GitDetails::default();
             let other_content = "
                 variables:
                   OTHER_VARIABLE: true
@@ -416,13 +437,16 @@ mod tests {
             ";
 
             let configuration = parse_and_merge(content).unwrap();
-            let additional_configurations = parse_all(&configuration.include, &files).unwrap();
+            let additional_configurations = parse_all(&configuration.include, &files, &git_dummy)
+                .await
+                .unwrap();
 
             assert_eq!(additional_configurations.len(), 1);
         }
 
-        #[test]
-        fn resolves_multiple_local_files() {
+        #[tokio::test]
+        async fn resolves_multiple_local_files() {
+            let git_dummy = GitDetails::default();
             let file_a_content = "
                 variables:
                   FILE_A: value a
@@ -442,7 +466,49 @@ mod tests {
             ";
 
             let configuration = parse_and_merge(content).unwrap();
-            let additional_configurations = parse_all(&configuration.include, &files).unwrap();
+            let additional_configurations = parse_all(&configuration.include, &files, &git_dummy)
+                .await
+                .unwrap();
+
+            assert_eq!(additional_configurations.len(), 2);
+        }
+
+        #[tokio::test]
+        async fn resolves_gitlab_project_files() {
+            let git_details = GitDetails {
+                host: "https://example-gitlab.com".into(),
+            };
+            let file_a_content = "
+                variables:
+                  FILE_A: value a
+            ";
+            let file_b_content = "
+                variables:
+                  FILE_B: value b
+            ";
+            let mut files = StubFiles::default();
+            files.add_remote_file(
+                "https://example-gitlab.com/the-group/the-project/-/raw/main/file-a.yml",
+                file_a_content,
+            );
+            files.add_remote_file(
+                "https://example-gitlab.com/the-group/the-project/-/raw/main/file-b.yml",
+                file_b_content,
+            );
+
+            let content = "
+                include:
+                  project: the-group/the-project
+                  ref: main
+                  file:
+                    - file-a.yml
+                    - file-b.yml
+            ";
+
+            let configuration = parse_and_merge(content).unwrap();
+            let additional_configurations = parse_all(&configuration.include, &files, &git_details)
+                .await
+                .unwrap();
 
             assert_eq!(additional_configurations.len(), 2);
         }
