@@ -8,6 +8,7 @@ use crate::gitlab::configuration::{GitLabConfiguration, Include, OneOrMoreInclud
 use crate::gitlab::merge::{
     collect_template_names, merge_configuration, merge_image, merge_script, merge_variables,
 };
+use async_recursion::async_recursion;
 use std::io::ErrorKind;
 
 pub fn parse<R>(reader: R) -> Result<GitLabConfiguration, Box<dyn std::error::Error>>
@@ -62,6 +63,7 @@ pub fn merge_jobs(
     Ok(())
 }
 
+#[async_recursion(?Send)]
 pub async fn parse_all(
     maybe_includes: &Option<OneOrMoreIncludes>,
     file_access: &impl FileAccess,
@@ -92,16 +94,16 @@ async fn read_and_parse(
     file_access: &impl FileAccess,
     git_details: &GitDetails,
 ) -> Result<Vec<GitLabConfiguration>, Box<dyn std::error::Error>> {
+    let mut configurations = vec![];
+
     match include {
         Include::Local(local_include) => {
             let content = file_access.read_local_file(&local_include.local)?;
             let configuration = parse(*content)?;
 
-            Ok(vec![configuration])
+            configurations.push(configuration);
         }
         Include::File(file_include) => {
-            let mut configurations = vec![];
-
             for file in &file_include.file {
                 let url = format!(
                     "{}/{}/-/raw/{}/{}",
@@ -112,14 +114,12 @@ async fn read_and_parse(
 
                 configurations.push(configuration);
             }
-
-            Ok(configurations)
         }
         Include::Remote(remote_include) => {
             let content = file_access.read_remote_file(&remote_include.remote).await?;
             let configuration = parse(*content)?;
 
-            Ok(vec![configuration])
+            configurations.push(configuration);
         }
         Include::Template(template_include) => {
             let url = format!(
@@ -129,9 +129,23 @@ async fn read_and_parse(
             let content = file_access.read_remote_file(&url).await?;
             let configuration = parse(*content)?;
 
-            Ok(vec![configuration])
+            configurations.push(configuration);
         }
     }
+
+    let mut nested_configurations = vec![];
+
+    for configuration in &configurations {
+        if configuration.include.is_some() {
+            let more_configurations =
+                parse_all(&configuration.include, file_access, git_details).await?;
+            nested_configurations.extend(more_configurations);
+        }
+    }
+
+    configurations.extend(nested_configurations);
+
+    Ok(configurations)
 }
 
 #[cfg(test)]
@@ -477,6 +491,36 @@ mod tests {
                 include:
                   - local: file-a.yml
                   - local: file-b.yml
+            ";
+
+            let configuration = parse_and_merge(content).unwrap();
+            let additional_configurations = parse_all(&configuration.include, &files, &git_dummy)
+                .await
+                .unwrap();
+
+            assert_eq!(additional_configurations.len(), 2);
+        }
+
+        #[tokio::test]
+        async fn resolves_nested_local_files() {
+            let git_dummy = GitDetails::default();
+            let first_content = "
+                include:
+                  local: second-file.yml
+
+                variables:
+                  OTHER_VARIABLE: true
+            ";
+            let second_content = "
+                variables:
+                  SOME_VARIABLE: true
+            ";
+            let mut files = StubFiles::default();
+            files.add_file("first-file.yml", first_content);
+            files.add_file("second-file.yml", second_content);
+            let content = "
+                include:
+                  local: first-file.yml
             ";
 
             let configuration = parse_and_merge(content).unwrap();
