@@ -115,7 +115,12 @@ async fn read_and_parse(
 
             Ok(configurations)
         }
-        Include::Remote(_) => todo!(),
+        Include::Remote(remote_include) => {
+            let content = file_access.read_remote_file(&remote_include.remote).await?;
+            let configuration = parse(*content)?;
+
+            Ok(vec![configuration])
+        }
         Include::Template(_) => todo!(),
     }
 }
@@ -511,6 +516,29 @@ mod tests {
                 .unwrap();
 
             assert_eq!(additional_configurations.len(), 2);
+        }
+
+        #[tokio::test]
+        async fn resolves_remote_files() {
+            let git_dummy = GitDetails::default();
+            let file_content = "
+                variables:
+                  FILE: value
+            ";
+            let mut files = StubFiles::default();
+            files.add_remote_file("https://example.com/path/to/file.yml", file_content);
+
+            let content = "
+                include:
+                  remote: https://example.com/path/to/file.yml
+            ";
+
+            let configuration = parse_and_merge(content).unwrap();
+            let additional_configurations = parse_all(&configuration.include, &files, &git_dummy)
+                .await
+                .unwrap();
+
+            assert_eq!(additional_configurations.len(), 1);
         }
     }
 
