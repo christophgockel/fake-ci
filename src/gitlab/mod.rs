@@ -24,7 +24,7 @@ pub fn merge_all(
     configuration: &mut GitLabConfiguration,
 ) -> Result<(), Box<dyn std::error::Error>> {
     for additional_configuration in additional_configurations {
-        merge_configuration(&additional_configuration, configuration);
+        merge_configuration(additional_configuration, configuration);
     }
 
     merge_jobs(configuration)?;

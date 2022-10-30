@@ -41,8 +41,9 @@ pub fn collect_template_names(
     Ok(collected_names)
 }
 
-pub fn merge_configuration(source: &GitLabConfiguration, target: &mut GitLabConfiguration) {
+pub fn merge_configuration(source: GitLabConfiguration, target: &mut GitLabConfiguration) {
     target.variables.splice(0..0, source.variables.to_owned());
+    target.templates.extend(source.templates);
 }
 
 #[cfg(test)]
@@ -205,7 +206,7 @@ mod tests {
             let mut target = GitLabConfiguration::default();
             source.variables.push(("VARIABLE_B".into(), "2".into()));
 
-            merge_configuration(&source, &mut target);
+            merge_configuration(source, &mut target);
 
             assert_eq!(
                 target.variables,
@@ -214,6 +215,23 @@ mod tests {
                     ("VARIABLE_B".into(), "2".into())
                 ]
             );
+        }
+
+        #[test]
+        fn merges_templates() {
+            let mut source = GitLabConfiguration::default();
+            source
+                .templates
+                .insert(".template-a".into(), Job::default());
+
+            let mut target = GitLabConfiguration::default();
+            source
+                .templates
+                .insert(".template-b".into(), Job::default());
+
+            merge_configuration(source, &mut target);
+
+            assert_eq!(target.templates.len(), 2);
         }
     }
 }
