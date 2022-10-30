@@ -4,8 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+regex = "1.6"
 serde = { version = "1.0", features = ["serde_derive"] }
 serde_yaml = "0.9"
+url = "2.3"
 
 [dev-dependencies]
 assert_cmd = "2.0"

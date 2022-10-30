@@ -1,4 +1,5 @@
 pub mod file;
+mod git;
 mod gitlab;
 
 use crate::gitlab::parse;
