@@ -4,7 +4,7 @@ mod merge;
 
 use crate::file::FileAccess;
 use crate::git::GitDetails;
-use crate::gitlab::configuration::{GitLabConfiguration, Include, OneOrMoreIncludes};
+use crate::gitlab::configuration::{GitLabConfiguration, Include};
 use crate::gitlab::merge::{
     collect_template_names, merge_configuration, merge_image, merge_script, merge_variables,
 };
@@ -65,25 +65,14 @@ pub fn merge_jobs(
 
 #[async_recursion(?Send)]
 pub async fn parse_all(
-    maybe_includes: &Option<OneOrMoreIncludes>,
+    includes: &Vec<Include>,
     file_access: &impl FileAccess,
     git_details: &GitDetails,
 ) -> Result<Vec<GitLabConfiguration>, Box<dyn std::error::Error>> {
     let mut included_configurations = vec![];
 
-    if let Some(includes) = maybe_includes {
-        match includes {
-            OneOrMoreIncludes::Single(include) => {
-                included_configurations
-                    .extend(read_and_parse(include, file_access, git_details).await?);
-            }
-            OneOrMoreIncludes::Multiple(includes) => {
-                for include in includes {
-                    included_configurations
-                        .extend(read_and_parse(include, file_access, git_details).await?);
-                }
-            }
-        }
+    for include in includes {
+        included_configurations.extend(read_and_parse(include, file_access, git_details).await?);
     }
 
     Ok(included_configurations)
@@ -136,11 +125,9 @@ async fn read_and_parse(
     let mut nested_configurations = vec![];
 
     for configuration in &configurations {
-        if configuration.include.is_some() {
-            let more_configurations =
-                parse_all(&configuration.include, file_access, git_details).await?;
-            nested_configurations.extend(more_configurations);
-        }
+        let more_configurations =
+            parse_all(&configuration.include, file_access, git_details).await?;
+        nested_configurations.extend(more_configurations);
     }
 
     configurations.extend(nested_configurations);

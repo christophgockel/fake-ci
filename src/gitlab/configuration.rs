@@ -1,6 +1,6 @@
 use crate::gitlab::deserialise::{
     hashmap_of_jobs, hashmap_of_templates, map_to_list_of_string_tuples, seq_string_or_struct,
-    string_or_seq_string,
+    str_or_map_to_list_of_maps, string_or_seq_string,
 };
 use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
@@ -9,6 +9,8 @@ use std::str::FromStr;
 
 #[rustfmt::skip]
 fn default_empty_list() -> Vec<String> { vec![] }
+#[rustfmt::skip]
+fn default_empty_include_list() -> Vec<Include> { vec![] }
 #[rustfmt::skip]
 fn default_file_include_ref() -> String { "HEAD".into() }
 #[rustfmt::skip]
@@ -25,8 +27,12 @@ pub struct GitLabConfiguration {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default: Option<GlobalDefaults>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub include: Option<OneOrMoreIncludes>,
+    #[serde(
+        default = "default_empty_include_list",
+        deserialize_with = "str_or_map_to_list_of_maps",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub include: Vec<Include>,
 
     #[serde(default = "default_empty_list", skip_serializing_if = "Vec::is_empty")]
     pub stages: Vec<String>,
@@ -94,18 +100,21 @@ impl Default for When {
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 #[serde(untagged)]
-pub enum OneOrMoreIncludes {
-    Single(Include),
-    Multiple(Vec<Include>),
-}
-
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
-#[serde(untagged)]
 pub enum Include {
     Local(LocalInclude),
     File(FileInclude),
     Remote(RemoteInclude),
     Template(TemplateInclude),
+}
+
+impl FromStr for Include {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Include::Local(LocalInclude {
+            local: s.to_string(),
+        }))
+    }
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
@@ -418,24 +427,23 @@ mod tests {
             let yaml = "";
             let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
 
-            assert!(config.include.is_none());
+            assert_eq!(config.include.len(), 0);
         }
 
-        // TODO: doesn't work nicely with the rest of the untagged enum yet
-        // #[test]
-        // fn deserialises_simple_include() {
-        //     let yaml = "
-        //         include: 'file.yml'
-        //     ";
-        //     let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
-        //
-        //     assert_eq!(
-        //         config.include.unwrap(),
-        //         OneOrMoreIncludes::Single(Include::Local(LocalInclude {
-        //             local: "file.yml".into()
-        //         }))
-        //     );
-        // }
+        #[test]
+        fn deserialises_simple_include() {
+            let yaml = "
+                include: 'file.yml'
+            ";
+            let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
+
+            assert_eq!(
+                config.include,
+                vec![Include::Local(LocalInclude {
+                    local: "file.yml".into()
+                })]
+            );
+        }
 
         #[test]
         fn deserialises_single_local_include() {
@@ -446,10 +454,10 @@ mod tests {
             let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
 
             assert_eq!(
-                config.include.unwrap(),
-                OneOrMoreIncludes::Single(Include::Local(LocalInclude {
+                config.include,
+                vec![Include::Local(LocalInclude {
                     local: "file.yml".into()
-                }))
+                })]
             );
         }
 
@@ -464,12 +472,12 @@ mod tests {
             let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
 
             assert_eq!(
-                config.include.unwrap(),
-                OneOrMoreIncludes::Single(Include::File(FileInclude {
+                config.include,
+                vec![Include::File(FileInclude {
                     project: "project/group".into(),
                     r#ref: "main".into(),
                     file: vec!["/path/to/file.yml".into()]
-                }))
+                })]
             );
         }
 
@@ -486,12 +494,12 @@ mod tests {
             let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
 
             assert_eq!(
-                config.include.unwrap(),
-                OneOrMoreIncludes::Single(Include::File(FileInclude {
+                config.include,
+                vec![Include::File(FileInclude {
                     project: "project/group".into(),
                     r#ref: "main".into(),
                     file: vec!["/path/to/file-a.yml".into(), "/path/to/file-b.yml".into()]
-                }))
+                })]
             );
         }
 
@@ -504,10 +512,10 @@ mod tests {
             let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
 
             assert_eq!(
-                config.include.unwrap(),
-                OneOrMoreIncludes::Single(Include::Remote(RemoteInclude {
+                config.include,
+                vec![Include::Remote(RemoteInclude {
                     remote: "https://external.com/file.yml".into(),
-                }))
+                })]
             );
         }
 
@@ -520,10 +528,10 @@ mod tests {
             let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
 
             assert_eq!(
-                config.include.unwrap(),
-                OneOrMoreIncludes::Single(Include::Template(TemplateInclude {
+                config.include,
+                vec![Include::Template(TemplateInclude {
                     template: "template-file.yml".into(),
-                }))
+                })]
             );
         }
 
@@ -537,15 +545,15 @@ mod tests {
             let config = serde_yaml::from_str::<GitLabConfiguration>(yaml).unwrap();
 
             assert_eq!(
-                config.include.unwrap(),
-                OneOrMoreIncludes::Multiple(vec![
+                config.include,
+                vec![
                     Include::Local(LocalInclude {
                         local: "file.yml".into()
                     }),
                     Include::Remote(RemoteInclude {
                         remote: "https://external.com/file.yml".into(),
                     }),
-                ])
+                ]
             );
         }
     }

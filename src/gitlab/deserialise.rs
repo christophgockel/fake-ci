@@ -1,4 +1,4 @@
-use crate::gitlab::configuration::Job;
+use crate::gitlab::configuration::{Include, Job};
 use serde::de::{DeserializeSeed, Error, MapAccess, Visitor};
 use serde::{de, Deserialize, Deserializer};
 use serde_yaml::Value;
@@ -165,6 +165,46 @@ where
 
     let visitor = MapVisitor;
     deserializer.deserialize_map(visitor)
+}
+
+pub fn str_or_map_to_list_of_maps<'de, D>(deserializer: D) -> Result<Vec<Include>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct StructOrVec(PhantomData<Vec<String>>);
+
+    impl<'de> de::Visitor<'de> for StructOrVec {
+        type Value = Vec<Include>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("map or list of maps")
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(vec![FromStr::from_str(value).map_err(de::Error::custom)?])
+        }
+
+        fn visit_seq<S>(self, visitor: S) -> Result<Self::Value, S::Error>
+        where
+            S: de::SeqAccess<'de>,
+        {
+            Deserialize::deserialize(de::value::SeqAccessDeserializer::new(visitor))
+        }
+
+        fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error>
+        where
+            A: MapAccess<'de>,
+        {
+            Ok(vec![Deserialize::deserialize(
+                de::value::MapAccessDeserializer::new(map),
+            )?])
+        }
+    }
+
+    deserializer.deserialize_any(StructOrVec(PhantomData))
 }
 
 #[macro_export]
