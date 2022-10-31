@@ -1,24 +1,24 @@
 mod configuration;
 mod deserialise;
+mod error;
 mod merge;
 
 use crate::file::FileAccess;
 use crate::git::GitDetails;
 use crate::gitlab::configuration::{GitLabConfiguration, Include};
+use crate::gitlab::error::GitLabError;
 use crate::gitlab::merge::{
     collect_template_names, merge_configuration, merge_image, merge_script, merge_variables,
 };
-use anyhow::anyhow;
 use async_recursion::async_recursion;
-use std::fmt::{Display, Formatter};
-use std::io::ErrorKind;
 use url::Url;
 
-pub fn parse<R>(reader: R) -> Result<GitLabConfiguration, Box<dyn std::error::Error>>
+pub fn parse<R>(reader: R) -> Result<GitLabConfiguration, GitLabError>
 where
     R: std::io::Read,
 {
-    let configuration: GitLabConfiguration = serde_yaml::from_reader(reader)?;
+    let configuration: GitLabConfiguration =
+        serde_yaml::from_reader(reader).map_err(GitLabError::parse)?;
 
     Ok(configuration)
 }
@@ -26,7 +26,7 @@ where
 pub fn merge_all(
     additional_configurations: Vec<GitLabConfiguration>,
     configuration: &mut GitLabConfiguration,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), GitLabError> {
     for additional_configuration in additional_configurations {
         merge_configuration(additional_configuration, configuration);
     }
@@ -36,9 +36,7 @@ pub fn merge_all(
     Ok(())
 }
 
-pub fn merge_jobs(
-    configuration: &mut GitLabConfiguration,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn merge_jobs(configuration: &mut GitLabConfiguration) -> Result<(), GitLabError> {
     for (_name, job) in configuration.jobs.iter_mut() {
         let required_template_names = collect_template_names(job, &configuration.templates)?;
 
@@ -46,7 +44,7 @@ pub fn merge_jobs(
             let template = configuration
                 .templates
                 .get(&template_name)
-                .ok_or_else(|| std::io::Error::new(ErrorKind::NotFound, "template not found"))?;
+                .ok_or_else(|| GitLabError::TemplateNotFound(template_name.to_owned()))?;
 
             merge_variables(&template.variables, &mut job.variables);
             merge_script(&template.after_script, &mut job.after_script);
@@ -72,20 +70,11 @@ pub enum ResolvePath {
     Remote(Url),
 }
 
-impl Display for ResolvePath {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ResolvePath::Local => f.write_str("Local"),
-            ResolvePath::Remote(url) => f.write_str(&format!("Remote({})", url)),
-        }
-    }
-}
-
 pub async fn parse_all(
     includes: &Vec<Include>,
     file_access: &impl FileAccess,
     git_details: &GitDetails,
-) -> Result<Vec<GitLabConfiguration>, Box<dyn std::error::Error>> {
+) -> Result<Vec<GitLabConfiguration>, GitLabError> {
     // The distinction between "local" path resolving and "remote" is that on the initial read
     // through a .gitlab-ci.yml all `include:local` (https://docs.gitlab.com/ee/ci/yaml/#includelocal)
     // includes are to be read from the local file system.
@@ -99,7 +88,7 @@ pub async fn parse_all_with_base(
     file_access: &impl FileAccess,
     git_details: &GitDetails,
     resolve_path: &ResolvePath,
-) -> Result<Vec<GitLabConfiguration>, Box<dyn std::error::Error>> {
+) -> Result<Vec<GitLabConfiguration>, GitLabError> {
     let mut included_configurations = vec![];
 
     for include in includes {
@@ -115,19 +104,21 @@ async fn read_and_parse(
     file_access: &impl FileAccess,
     git_details: &GitDetails,
     resolve_path: &ResolvePath,
-) -> Result<Vec<GitLabConfiguration>, Box<dyn std::error::Error>> {
+) -> Result<Vec<GitLabConfiguration>, GitLabError> {
     let mut paths_and_configurations = vec![];
 
     match include {
         Include::Local(local_include) => {
             let content = match resolve_path {
-                ResolvePath::Local => file_access.read_local_file(&local_include.local)?,
+                ResolvePath::Local => file_access
+                    .read_local_file(&local_include.local)
+                    .map_err(GitLabError::file)?,
                 ResolvePath::Remote(base_url) => {
                     let url1 = append(base_url, &local_include.local)?;
                     file_access
                         .read_remote_file(url1)
                         .await
-                        .map_err(|_| anyhow!("Error reading remote file"))?
+                        .map_err(GitLabError::file)?
                 }
             };
 
@@ -141,7 +132,10 @@ async fn read_and_parse(
                     "{}/{}/-/raw/{}/{}",
                     &git_details.host, file_include.project, file_include.r#ref, file
                 );
-                let content = file_access.read_remote_file(&url).await?;
+                let content = file_access
+                    .read_remote_file(&url)
+                    .await
+                    .map_err(GitLabError::file)?;
                 let configuration = parse(*content)?;
 
                 paths_and_configurations
@@ -149,7 +143,10 @@ async fn read_and_parse(
             }
         }
         Include::Remote(remote_include) => {
-            let content = file_access.read_remote_file(&remote_include.remote).await?;
+            let content = file_access
+                .read_remote_file(&remote_include.remote)
+                .await
+                .map_err(GitLabError::file)?;
             let configuration = parse(*content)?;
 
             paths_and_configurations.push((
@@ -162,7 +159,10 @@ async fn read_and_parse(
                 "https://gitlab.com/gitlab-org/gitlab/-/raw/master/lib/gitlab/ci/templates/{}",
                 &template_include.template
             );
-            let content = file_access.read_remote_file(&url).await?;
+            let content = file_access
+                .read_remote_file(&url)
+                .await
+                .map_err(GitLabError::file)?;
             let configuration = parse(*content)?;
 
             paths_and_configurations.push((ResolvePath::Remote(base_url(&url)?), configuration));
@@ -187,22 +187,22 @@ async fn read_and_parse(
     Ok(configurations)
 }
 
-fn base_url(url: &str) -> Result<Url, Box<dyn std::error::Error>> {
-    let mut base_url = Url::parse(url)?;
+fn base_url(url: &str) -> Result<Url, GitLabError> {
+    let mut base_url = Url::parse(url).map_err(GitLabError::create_url)?;
 
     base_url
         .path_segments_mut()
-        .map_err(|_| anyhow!("Cannot split URL"))?
+        .map_err(GitLabError::adjust_url)?
         .pop();
 
     Ok(base_url)
 }
 
-fn append(base_url: &Url, path: &str) -> Result<Url, Box<dyn std::error::Error>> {
+fn append(base_url: &Url, path: &str) -> Result<Url, GitLabError> {
     let mut full_url = base_url.clone();
     full_url
         .path_segments_mut()
-        .map_err(|_| anyhow!("Cannot split URL"))?
+        .map_err(GitLabError::adjust_url)?
         .pop_if_empty()
         .push(path);
 
@@ -213,7 +213,7 @@ fn append(base_url: &Url, path: &str) -> Result<Url, Box<dyn std::error::Error>>
 mod tests {
     use super::*;
 
-    fn parse_and_merge(content: &str) -> Result<GitLabConfiguration, Box<dyn std::error::Error>> {
+    fn parse_and_merge(content: &str) -> Result<GitLabConfiguration, GitLabError> {
         let mut configuration = parse(content.as_bytes())?;
 
         merge_jobs(&mut configuration)?;

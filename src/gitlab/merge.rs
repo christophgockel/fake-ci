@@ -1,6 +1,6 @@
 use crate::gitlab::configuration::{GitLabConfiguration, Job, ListOfStrings};
+use crate::gitlab::error::GitLabError;
 use std::collections::HashMap;
-use std::io::ErrorKind;
 
 pub fn merge_variables(source: &[(String, String)], target: &mut Vec<(String, String)>) {
     target.splice(0..0, source.to_owned());
@@ -21,14 +21,14 @@ pub fn merge_script(source: &Option<ListOfStrings>, target: &mut Option<ListOfSt
 pub fn collect_template_names(
     job: &Job,
     all_templates: &HashMap<String, Job>,
-) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+) -> Result<Vec<String>, GitLabError> {
     let mut collected_names = vec![];
 
     if let Some(ListOfStrings(template_names)) = &job.extends {
         for template_name in template_names {
             let template = all_templates
                 .get(template_name)
-                .ok_or_else(|| std::io::Error::new(ErrorKind::NotFound, "template not found"))?;
+                .ok_or_else(|| GitLabError::TemplateNotFound(template_name.to_owned()))?;
 
             if template.extends.is_some() {
                 collected_names.extend(collect_template_names(template, all_templates)?);

@@ -1,39 +1,58 @@
 use regex::Regex;
-use std::error::Error;
-use std::io::ErrorKind;
 use std::process::Command;
+use thiserror::Error;
 use url::Url;
+
+#[derive(Error, Debug)]
+pub enum GitError {
+    #[error("Cannot execute git to read remote URL: {0}")]
+    Execute(#[source] Box<dyn std::error::Error + Send + Sync>),
+    #[error("No git host configured.")]
+    NoHostFound(),
+    #[error("Remote URL is not supported yet (only ssh): {0}")]
+    UnsupportedUrl(String),
+    #[error("URL for remote git host is invalid: {0}")]
+    InvalidUrl(#[source] Box<dyn std::error::Error + Send + Sync>),
+}
+
+impl GitError {
+    pub fn execute(error: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> Self {
+        GitError::Execute(error.into())
+    }
+
+    pub fn invalid_url(error: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> Self {
+        GitError::InvalidUrl(error.into())
+    }
+}
 
 #[derive(Default)]
 pub struct GitDetails {
     pub host: String,
 }
 
-pub fn read_details() -> Result<GitDetails, Box<dyn Error>> {
+pub fn read_details() -> Result<GitDetails, GitError> {
     let output = Command::new("git")
         .arg("ls-remote")
         .arg("--get-url")
-        .output()?;
+        .output()
+        .map_err(GitError::execute)?;
     let content = std::str::from_utf8(&output.stdout).unwrap();
     let mut content = content.trim().to_string();
 
     if content.is_empty() {
-        return Err(Box::new(std::io::Error::new(
-            ErrorKind::Other,
-            "no git host configured",
-        )));
+        return Err(GitError::NoHostFound());
     }
 
     let mut host = None;
 
     // looks for structure like git@github.com:username/repo.git
-    let ssh_url = Regex::new(r"^\S+(@)\S+(:).*$")?;
+    let ssh_url = Regex::new(r"^\S+(@)\S+(:).*$").unwrap();
 
     if ssh_url.is_match(&content) {
         content = content.replace(':', "/");
         content = content.replace("git@", "https://");
 
-        let url = Url::parse(&content)?;
+        let url = Url::parse(&content).map_err(GitError::invalid_url)?;
 
         match url.host() {
             None => {}
@@ -42,10 +61,7 @@ pub fn read_details() -> Result<GitDetails, Box<dyn Error>> {
             }
         }
     } else {
-        return Err(Box::new(std::io::Error::new(
-            ErrorKind::Other,
-            "non-ssh git remote is not supported yet.",
-        )));
+        return Err(GitError::UnsupportedUrl(content));
     }
 
     Ok(GitDetails {
