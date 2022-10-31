@@ -8,8 +8,11 @@ use crate::gitlab::configuration::{GitLabConfiguration, Include};
 use crate::gitlab::merge::{
     collect_template_names, merge_configuration, merge_image, merge_script, merge_variables,
 };
+use anyhow::anyhow;
 use async_recursion::async_recursion;
+use std::fmt::{Display, Formatter};
 use std::io::ErrorKind;
+use url::Url;
 
 pub fn parse<R>(reader: R) -> Result<GitLabConfiguration, Box<dyn std::error::Error>>
 where
@@ -63,16 +66,45 @@ pub fn merge_jobs(
     Ok(())
 }
 
-#[async_recursion(?Send)]
+#[derive(Clone)]
+pub enum ResolvePath {
+    Local,
+    Remote(Url),
+}
+
+impl Display for ResolvePath {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ResolvePath::Local => f.write_str("Local"),
+            ResolvePath::Remote(url) => f.write_str(&format!("Remote({})", url)),
+        }
+    }
+}
+
 pub async fn parse_all(
     includes: &Vec<Include>,
     file_access: &impl FileAccess,
     git_details: &GitDetails,
 ) -> Result<Vec<GitLabConfiguration>, Box<dyn std::error::Error>> {
+    // The distinction between "local" path resolving and "remote" is that on the initial read
+    // through a .gitlab-ci.yml all `include:local` (https://docs.gitlab.com/ee/ci/yaml/#includelocal)
+    // includes are to be read from the local file system.
+    // Every additional pass from the included configurations is to be resolved as a remote path.
+    parse_all_with_base(includes, file_access, git_details, &ResolvePath::Local).await
+}
+
+#[async_recursion(?Send)]
+pub async fn parse_all_with_base(
+    includes: &Vec<Include>,
+    file_access: &impl FileAccess,
+    git_details: &GitDetails,
+    resolve_path: &ResolvePath,
+) -> Result<Vec<GitLabConfiguration>, Box<dyn std::error::Error>> {
     let mut included_configurations = vec![];
 
     for include in includes {
-        included_configurations.extend(read_and_parse(include, file_access, git_details).await?);
+        included_configurations
+            .extend(read_and_parse(include, file_access, git_details, resolve_path).await?);
     }
 
     Ok(included_configurations)
@@ -82,15 +114,26 @@ async fn read_and_parse(
     include: &Include,
     file_access: &impl FileAccess,
     git_details: &GitDetails,
+    resolve_path: &ResolvePath,
 ) -> Result<Vec<GitLabConfiguration>, Box<dyn std::error::Error>> {
-    let mut configurations = vec![];
+    let mut paths_and_configurations = vec![];
 
     match include {
         Include::Local(local_include) => {
-            let content = file_access.read_local_file(&local_include.local)?;
+            let content = match resolve_path {
+                ResolvePath::Local => file_access.read_local_file(&local_include.local)?,
+                ResolvePath::Remote(base_url) => {
+                    let url1 = append(base_url, &local_include.local)?;
+                    file_access
+                        .read_remote_file(url1)
+                        .await
+                        .map_err(|_| anyhow!("Error reading remote file"))?
+                }
+            };
+
             let configuration = parse(*content)?;
 
-            configurations.push(configuration);
+            paths_and_configurations.push((resolve_path.clone(), configuration));
         }
         Include::File(file_include) => {
             for file in &file_include.file {
@@ -101,14 +144,18 @@ async fn read_and_parse(
                 let content = file_access.read_remote_file(&url).await?;
                 let configuration = parse(*content)?;
 
-                configurations.push(configuration);
+                paths_and_configurations
+                    .push((ResolvePath::Remote(base_url(&url)?), configuration));
             }
         }
         Include::Remote(remote_include) => {
             let content = file_access.read_remote_file(&remote_include.remote).await?;
             let configuration = parse(*content)?;
 
-            configurations.push(configuration);
+            paths_and_configurations.push((
+                ResolvePath::Remote(base_url(&remote_include.remote)?),
+                configuration,
+            ));
         }
         Include::Template(template_include) => {
             let url = format!(
@@ -118,21 +165,48 @@ async fn read_and_parse(
             let content = file_access.read_remote_file(&url).await?;
             let configuration = parse(*content)?;
 
-            configurations.push(configuration);
+            paths_and_configurations.push((ResolvePath::Remote(base_url(&url)?), configuration));
         }
     }
 
-    let mut nested_configurations = vec![];
+    let mut configurations = vec![];
 
-    for configuration in &configurations {
-        let more_configurations =
-            parse_all(&configuration.include, file_access, git_details).await?;
-        nested_configurations.extend(more_configurations);
+    for (new_resolve_path, configuration) in paths_and_configurations {
+        let more_configurations = parse_all_with_base(
+            &configuration.include,
+            file_access,
+            git_details,
+            &new_resolve_path,
+        )
+        .await?;
+
+        configurations.extend(more_configurations);
+        configurations.push(configuration);
     }
 
-    configurations.extend(nested_configurations);
-
     Ok(configurations)
+}
+
+fn base_url(url: &str) -> Result<Url, Box<dyn std::error::Error>> {
+    let mut base_url = Url::parse(url)?;
+
+    base_url
+        .path_segments_mut()
+        .map_err(|_| anyhow!("Cannot split URL"))?
+        .pop();
+
+    Ok(base_url)
+}
+
+fn append(base_url: &Url, path: &str) -> Result<Url, Box<dyn std::error::Error>> {
+    let mut full_url = base_url.clone();
+    full_url
+        .path_segments_mut()
+        .map_err(|_| anyhow!("Cannot split URL"))?
+        .pop_if_empty()
+        .push(path);
+
+    Ok(full_url)
 }
 
 #[cfg(test)]
@@ -603,6 +677,38 @@ mod tests {
 
             assert_eq!(additional_configurations.len(), 1);
         }
+
+        #[tokio::test]
+        async fn resolves_nested_remote_files_as_local_to_the_host() {
+            let git_details = GitDetails {
+                host: "https://example-gitlab.com".into(),
+            };
+            let first_include = "
+                include:
+                  local: local-file.yml
+
+                variables:
+                  SECOND_VARIABLE: true
+            ";
+            let second_include = "
+                variables:
+                  FIRST_VARIABLE: true
+            ";
+            let mut files = StubFiles::default();
+            files.add_remote_file("https://example.com/path/to/file.yml", first_include);
+            files.add_remote_file("https://example.com/path/to/local-file.yml", second_include);
+            let local_content = "
+                include:
+                  remote: https://example.com/path/to/file.yml
+            ";
+
+            let configuration = parse_and_merge(local_content).unwrap();
+            let additional_configurations = parse_all(&configuration.include, &files, &git_details)
+                .await
+                .unwrap();
+
+            assert_eq!(additional_configurations.len(), 2);
+        }
     }
 
     mod test_merging_of_configurations {
@@ -622,6 +728,34 @@ mod tests {
             merge_all(vec![other_configuration], &mut configuration).unwrap();
 
             assert_eq!(configuration.variables.len(), 1);
+        }
+    }
+
+    mod test_url_helpers {
+        use super::*;
+        use url::Url;
+
+        #[test]
+        fn base_url_removes_the_file_part() {
+            let full_raw_url = "https://example.com/path/to/file.yml";
+            let expected_url = Url::parse("https://example.com/path/to").unwrap();
+
+            assert_eq!(base_url(full_raw_url).unwrap(), expected_url);
+        }
+
+        #[test]
+        fn append_path_appends_to_existing_url() {
+            // I'm surprised about the %2F encodings when `push`ing new path elements
+            // but I trust that it's doing the right thing even though I don't like
+            // how the test reads.
+            // See https://docs.rs/url/latest/url/struct.PathSegmentsMut.html#method.extend
+            // for details.
+            let base_url = Url::parse("https://example.com/some-path/").unwrap();
+
+            assert_eq!(
+                append(&base_url, &String::from("got/appended/file.yml")).unwrap(),
+                Url::parse("https://example.com/some-path/got%2Fappended%2Ffile.yml").unwrap()
+            );
         }
     }
 }
