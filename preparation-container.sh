@@ -29,7 +29,7 @@ docker exec \
 
 # after copying the code get the artifacts in place
 # cache steps to be added later
-job_names_with_artifacts=$(yq ".${job_name}.needs[] | select(.artifacts == true) | .job" <("$fake_ci_binary"))
+job_names_with_artifacts=$(yq '.["'"${job_name}"'"].needs[] | select(.artifacts == true) | .job' <("$fake_ci_binary"))
 
 if [ -n "$job_names_with_artifacts" ]
 then
@@ -39,13 +39,13 @@ then
 
   while IFS= read -r job_name_of_artifact
   do
-    artifact_paths=$(yq ".${job_name_of_artifact}.artifacts.paths[]" <("$fake_ci_binary"))
+    artifact_paths=$(yq '.["'"${job_name_of_artifact}"'"].artifacts.paths[]' <("$fake_ci_binary"))
 
     if [ -n "$artifact_paths" ]
     then
       while IFS= read -r artifact_path
       do
-        commands_to_run+="cp -Rp /artifacts/${job_name_of_artifact}/${artifact_path} /job;"
+        commands_to_run+="cp -Rp \"/artifacts/${job_name_of_artifact}/${artifact_path}\" /job;"
       done < <(echo "$artifact_paths")
     fi
 

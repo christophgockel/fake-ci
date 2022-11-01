@@ -12,7 +12,7 @@ commands_to_run="
 fake_ci_directory=$(dirname "$0")
 fake_ci_binary="${fake_ci_directory}/target/debug/fake-ci"
 
-script_lines=$(yq ".${job_name}.script[]" <("$fake_ci_binary"))
+script_lines=$(yq '.["'"${job_name}"'"].script[]' <("$fake_ci_binary"))
 
 while IFS= read -r line
 do
@@ -36,7 +36,7 @@ docker exec \
 
 # after the job finished successfully get optional artifacts out
 # further cache steps to be added later
-artifact_paths=$(yq ".${job_name}.artifacts.paths[]" <("$fake_ci_binary"))
+artifact_paths=$(yq '.["'"${job_name}"'"].artifacts.paths[]' <("$fake_ci_binary"))
 
 if [ -n "$artifact_paths" ]
 then
@@ -44,12 +44,12 @@ then
 
   commands_to_run="
     cd /job;
-    mkdir -p /artifacts/${job_name};
+    mkdir -p \"/artifacts/${job_name}\";
   "
 
   while IFS= read -r line
   do
-    commands_to_run+="cp -R ./${line} /artifacts/${job_name};"
+    commands_to_run+="cp -R ./${line} \"/artifacts/${job_name}/\";"
   done < <(echo "$artifact_paths")
 
   docker exec \
