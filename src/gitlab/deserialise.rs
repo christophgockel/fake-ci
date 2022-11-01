@@ -1,6 +1,6 @@
 use crate::gitlab::configuration::{Include, Job};
 use serde::de::{DeserializeSeed, Error, MapAccess, Visitor};
-use serde::{de, Deserialize, Deserializer};
+use serde::{de, Deserialize, Deserializer, Serializer};
 use serde_yaml::Value;
 use std::collections::HashMap;
 use std::fmt;
@@ -256,3 +256,19 @@ macro_rules! deserialize_job_hashmap_conditionally {
 
 deserialize_job_hashmap_conditionally!(hashmap_of_templates, |key: &String| key.starts_with('.'));
 deserialize_job_hashmap_conditionally!(hashmap_of_jobs, |key: &String| !key.starts_with('.'));
+
+pub fn list_of_string_tuples_to_map<S>(
+    list: &Vec<(String, String)>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let mut map = HashMap::new();
+
+    for (key, value) in list {
+        map.insert(key, value);
+    }
+
+    serializer.collect_map(map)
+}

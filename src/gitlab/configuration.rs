@@ -1,6 +1,7 @@
 use crate::gitlab::deserialise::{
-    hashmap_of_jobs, hashmap_of_templates, map_to_list_of_string_tuples, seq_string_or_struct,
-    str_or_map_to_list_of_maps, string_or_seq_string,
+    hashmap_of_jobs, hashmap_of_templates, list_of_string_tuples_to_map,
+    map_to_list_of_string_tuples, seq_string_or_struct, str_or_map_to_list_of_maps,
+    string_or_seq_string,
 };
 use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
@@ -40,6 +41,7 @@ pub struct GitLabConfiguration {
     #[serde(
         default,
         deserialize_with = "map_to_list_of_string_tuples",
+        serialize_with = "list_of_string_tuples_to_map",
         skip_serializing_if = "Vec::is_empty"
     )]
     pub variables: Vec<(String, String)>,
@@ -160,6 +162,7 @@ pub struct Job {
     #[serde(
         default,
         deserialize_with = "map_to_list_of_string_tuples",
+        serialize_with = "list_of_string_tuples_to_map",
         skip_serializing_if = "Vec::is_empty"
     )]
     pub variables: Vec<(String, String)>,
