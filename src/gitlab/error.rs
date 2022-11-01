@@ -3,13 +3,13 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum GitLabError {
-    #[error("Cannot parse configuration: {0}")]
-    Parse(#[source] Box<dyn std::error::Error + Send + Sync>),
-    #[error("Cannot adjust URL")]
+    #[error(transparent)]
+    Parse(#[from] Box<dyn std::error::Error + Send + Sync>),
+    #[error("cannot adjust URL")]
     AdjustUrl(),
-    #[error("Cannot create URL: {0}")]
+    #[error("cannot create URL {0}")]
     CreateUrl(#[source] Box<dyn std::error::Error + Send + Sync>),
-    #[error("Template not found: {0}")]
+    #[error("template '{0}' not found")]
     TemplateNotFound(String),
     #[error(transparent)]
     File(#[from] FileAccessError),

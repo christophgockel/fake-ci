@@ -1,6 +1,6 @@
 mod configuration;
 mod deserialise;
-mod error;
+pub mod error;
 mod merge;
 
 use crate::file::FileAccess;

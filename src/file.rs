@@ -8,16 +8,34 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum FileAccessError {
-    #[error("Cannot read file: {0}")]
-    CannotRead(#[source] Box<dyn std::error::Error + Send + Sync>),
+    #[error("cannot read file {0} ({1})")]
+    CannotRead(String, #[source] Box<dyn std::error::Error + Send + Sync>),
     #[cfg(test)]
-    #[error("File has not been stubbed: {0}")]
+    #[error("file {0} has not been stubbed")]
     NotStubbed(String),
 }
 
+fn file_path<P: AsRef<Path>>(path: P) -> String {
+    path.as_ref().to_string_lossy().to_string()
+}
+
+fn full_url<URL: IntoUrl>(url: &URL) -> String {
+    url.as_str().to_string()
+}
+
 impl FileAccessError {
-    pub fn cannot_read(error: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> Self {
-        FileAccessError::CannotRead(error.into())
+    pub fn cannot_read<P: AsRef<Path>>(
+        path: P,
+        error: impl Into<Box<dyn std::error::Error + Send + Sync>>,
+    ) -> Self {
+        FileAccessError::CannotRead(file_path(path), error.into())
+    }
+
+    pub fn cannot_read_remote<URL: IntoUrl>(
+        url: &URL,
+        error: impl Into<Box<dyn std::error::Error + Send + Sync>>,
+    ) -> Self {
+        FileAccessError::CannotRead(full_url(url), error.into())
     }
 }
 
@@ -43,11 +61,12 @@ impl FileAccess for RealFileSystem {
         &self,
         path: P,
     ) -> Result<Box<Cursor<Vec<u8>>>, FileAccessError> {
-        let mut file = std::fs::File::open(path).map_err(FileAccessError::cannot_read)?;
+        let mut file = std::fs::File::open(&path)
+            .map_err(|e| FileAccessError::cannot_read(path.as_ref(), e))?;
         let mut contents = Vec::new();
 
         file.read_to_end(&mut contents)
-            .map_err(FileAccessError::cannot_read)?;
+            .map_err(|e| FileAccessError::cannot_read(&path, e))?;
         let cursor = Cursor::new(contents);
 
         Ok(Box::new(cursor))
@@ -57,12 +76,12 @@ impl FileAccess for RealFileSystem {
         &self,
         url: URL,
     ) -> Result<Box<Cursor<Vec<u8>>>, FileAccessError> {
-        let response = reqwest::get(url)
+        let response = reqwest::get(url.as_str())
             .await
-            .map_err(FileAccessError::cannot_read)?
+            .map_err(|e| FileAccessError::cannot_read_remote(&url, e))?
             .bytes()
             .await
-            .map_err(FileAccessError::cannot_read)?;
+            .map_err(|e| FileAccessError::cannot_read_remote(&url, e))?;
 
         Ok(Box::new(Cursor::new(response.to_vec())))
     }

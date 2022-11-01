@@ -5,11 +5,11 @@ use url::Url;
 
 #[derive(Error, Debug)]
 pub enum GitError {
-    #[error("Cannot execute git to read remote URL: {0}")]
+    #[error("cannot execute git to read remote URL: {0}")]
     Execute(#[source] Box<dyn std::error::Error + Send + Sync>),
-    #[error("No git host configured.")]
+    #[error("no git host configured.")]
     NoHostFound(),
-    #[error("Remote URL is not supported yet (only ssh): {0}")]
+    #[error("remote URL is not supported yet (only ssh): {0}")]
     UnsupportedUrl(String),
     #[error("URL for remote git host is invalid: {0}")]
     InvalidUrl(#[source] Box<dyn std::error::Error + Send + Sync>),
