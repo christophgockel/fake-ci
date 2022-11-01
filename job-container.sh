@@ -12,7 +12,12 @@ commands_to_run="
 fake_ci_directory=$(dirname "$0")
 fake_ci_binary="${fake_ci_directory}/target/debug/fake-ci"
 
-script_lines=$(yq '.["'"${job_name}"'"].script[]' <("$fake_ci_binary"))
+before_script='(.["'"${job_name}"'"].before_script // [])'
+script='(.["'"${job_name}"'"].script // [])'
+after_script='(.["'"${job_name}"'"].after_script // [])'
+all_scripts="${before_script}"' + '"${script}"' + '"${after_script}"' | .[]'
+
+script_lines=$(yq "${all_scripts}" <("$fake_ci_binary"))
 
 while IFS= read -r line
 do
