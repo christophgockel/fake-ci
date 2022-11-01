@@ -1,6 +1,6 @@
 # Fake CI
 
-Run your CI pipelines locally for quicker iterations.
+Run your CI pipelines locally for quicker iterations and faster feedback.
 
 
 ## Development Notes
