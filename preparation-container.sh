@@ -7,6 +7,8 @@ job_name="$1"
 fake_ci_directory=$(dirname "$0")
 fake_ci_binary="${fake_ci_directory}/target/debug/fake-ci"
 
+merged_configuration=$("$fake_ci_binary")
+
 commands_to_run="
   cp -Rp /checkout/. /job;
 "
@@ -29,7 +31,7 @@ docker exec \
 
 # after copying the code get the artifacts in place
 # cache steps to be added later
-job_names_with_artifacts=$(yq '.["'"${job_name}"'"].needs[] | select(.artifacts == true) | .job' <("$fake_ci_binary"))
+job_names_with_artifacts=$(echo "${merged_configuration} " | yq '.["'"${job_name}"'"].needs[] | select(.artifacts == true) | .job')
 
 if [ -n "$job_names_with_artifacts" ]
 then
@@ -39,7 +41,7 @@ then
 
   while IFS= read -r job_name_of_artifact
   do
-    artifact_paths=$(yq '.["'"${job_name_of_artifact}"'"].artifacts.paths[]' <("$fake_ci_binary"))
+    artifact_paths=$(echo "${merged_configuration}" | yq '.["'"${job_name_of_artifact}"'"].artifacts.paths[]')
 
     if [ -n "$artifact_paths" ]
     then
