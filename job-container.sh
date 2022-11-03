@@ -21,6 +21,9 @@ all_scripts="${before_script}"' + '"${script}"' + '"${after_script}"' | .[]'
 
 script_lines=$(echo "${merged_configuration}" | yq "${all_scripts}")
 
+variables=$(echo "${merged_configuration}" | yq '(.["'"${job_name}"'"].variables // []) | to_entries | .[] | "export " + .key +"=\"" + .value + "\";" | . style="double"')
+commands_to_run+="${variables}"
+
 while IFS= read -r line
 do
   commands_to_run+="${line};"
