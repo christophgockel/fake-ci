@@ -10,7 +10,7 @@ commands_to_run="
   git remote add origin /project;
   git fetch origin --quiet;
   git checkout --quiet \${GIT_SHA};
-  (cd /project; git diff) | git apply --allow-empty --quiet;
+  (cd /project; git add -N .; git diff) | git apply --allow-empty --quiet;
 "
 
 docker ps --all --quiet --filter name=fake-ci-checkout | xargs docker rm --force > /dev/null
