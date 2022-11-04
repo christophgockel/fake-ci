@@ -24,6 +24,13 @@ script_lines=$(echo "${merged_configuration}" | yq "${all_scripts}")
 variables=$(echo "${merged_configuration}" | yq '(.["'"${job_name}"'"].variables // []) | to_entries | .[] | "export " + .key +"=\"" + .value + "\";" | . style="double"')
 commands_to_run+="${variables}"
 
+image_value=$(echo "${merged_configuration}" | yq '.["'"${job_name}"'"].image')
+interpolated_image_name=$(docker run \
+  --tty \
+  --rm \
+  alpine:latest \
+  sh -c "${variables} echo \"${image_value}\"" | sed 's/\r//') # sed is necessary due to subshell output having the \n removed
+
 while IFS= read -r line
 do
   commands_to_run+="${line};"
@@ -36,7 +43,7 @@ docker run \
   --detach \
   --volumes-from fake-ci-preparation \
   --name fake-ci-job \
-  alpine:latest
+  "${interpolated_image_name}"
 
 # execute job's commands
 docker exec \
