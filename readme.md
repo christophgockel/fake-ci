@@ -6,7 +6,7 @@ Run your CI pipelines locally for quicker iterations and faster feedback.
 ## Development Notes
 
 This tool is currently in active development.
-While validating the approach I'm focussing on support for GitLab exclusively.
+While validating the approach I'm focussing on support for GitLab only.
 Eventually support for more CI/CD providers is intended like GitHub Actions, CircleCI and others.
 
 
@@ -77,5 +77,5 @@ Fake CI consists of a family of containers for different tasks that are involved
 - **Artifact Volumes** store artifacts shared between Job Containers.
 - **Cache Volumes** are similar to Artifact Volumes in that CI pipelines can use caches between jobs to reduce overall runtime and required reprocessing.
 
-The main difference between artifacts and caches are that caches are byproduct of CI jobs to support additional jobs or subsequent pipeline runs.
+The main difference between artifacts and caches are that caches are a byproduct of CI jobs to support additional jobs or subsequent pipeline runs.
 Whereas artifacts are explicit outputs from a job like a final JAR file for a Java project.
