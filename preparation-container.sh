@@ -8,6 +8,7 @@ fake_ci_directory=$(dirname "$0")
 fake_ci_binary="${fake_ci_directory}/target/debug/fake-ci"
 
 commands_to_run="
+  chmod 0777 /job;
   cp -Rp /checkout/. /job;
 "
 
