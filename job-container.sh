@@ -12,19 +12,17 @@ commands_to_run="
 fake_ci_directory=$(dirname "$0")
 fake_ci_binary="${fake_ci_directory}/target/debug/fake-ci"
 
-merged_configuration=$("$fake_ci_binary")
-
 before_script='(.["'"${job_name}"'"].before_script // [])'
 script='(.["'"${job_name}"'"].script // [])'
 after_script='(.["'"${job_name}"'"].after_script // [])'
 all_scripts="${before_script}"' + '"${script}"' + '"${after_script}"' | .[]'
 
-script_lines=$(echo "${merged_configuration}" | yq "${all_scripts}")
+script_lines=$(yq "${all_scripts}" <("$fake_ci_binary"))
 
-variables=$(echo "${merged_configuration}" | yq '(.["'"${job_name}"'"].variables // []) | to_entries | .[] | "export " + .key +"=\"" + .value + "\";" | . style="double"')
+variables=$(yq '(.["'"${job_name}"'"].variables // []) | to_entries | .[] | "export " + .key +"=\"" + .value + "\";" | . style="double"' <("${fake_ci_binary}"))
 commands_to_run+="${variables}"
 
-image_value=$(echo "${merged_configuration}" | yq '.["'"${job_name}"'"].image')
+image_value=$(yq '.["'"${job_name}"'"].image' <("${fake_ci_binary}"))
 interpolated_image_name=$(docker run \
   --tty \
   --rm \
@@ -53,7 +51,7 @@ docker exec \
 
 # after the job finished successfully get optional artifacts out
 # further cache steps to be added later
-artifact_paths=$(echo "${merged_configuration}" | yq '.["'"${job_name}"'"].artifacts.paths[]')
+artifact_paths=$(yq '.["'"${job_name}"'"].artifacts.paths[]' <("$fake_ci_binary"))
 
 if [ -n "$artifact_paths" ]
 then
