@@ -5,8 +5,6 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum FakeCiError {
-    #[error("missing path to .gitlab-ci.yml as argument")]
-    MissingArgument,
     #[error(transparent)]
     File(#[from] FileAccessError),
     #[error(transparent)]

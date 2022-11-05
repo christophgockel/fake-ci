@@ -1,5 +1,6 @@
 [package]
 name = "fake-ci"
+description = "Run your CI pipelines locally for quicker iterations and faster feedback."
 version = "0.1.0"
 edition = "2021"
 
