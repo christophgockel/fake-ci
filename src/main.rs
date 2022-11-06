@@ -1,14 +1,17 @@
+mod commands;
 mod error;
 pub mod file;
 mod git;
 mod gitlab;
 
+use crate::commands::prune;
+use crate::commands::prune::{Processes, Prompt};
 use crate::error::FakeCiError;
 use crate::file::FileAccessError;
 use crate::git::read_details;
 use crate::gitlab::{merge_all, parse, parse_all};
 use anyhow::anyhow;
-use clap::{Args, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 use file::RealFileSystem;
 use std::env::current_dir;
 use std::path::PathBuf;
@@ -18,8 +21,11 @@ async fn main() -> Result<(), anyhow::Error> {
     let arguments = Arguments::parse();
 
     if let Some(command) = arguments.command {
+        let mut prompt = Prompt::default();
+        let mut processes = Processes::default();
+
         match command {
-            Command::Prune(_) => todo!(),
+            Command::Prune(_) => Ok(prune::command(&mut prompt, &mut processes)?),
         }
     } else {
         match run(arguments.file_path).await {
@@ -77,8 +83,5 @@ struct Arguments {
 #[derive(Subcommand)]
 enum Command {
     /// Remove all Docker artifacts.
-    Prune(Prune),
+    Prune(prune::Prune),
 }
-
-#[derive(Args)]
-struct Prune;
