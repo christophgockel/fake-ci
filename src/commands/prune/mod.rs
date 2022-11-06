@@ -1,44 +1,10 @@
 use crate::commands::CommandError;
+use crate::io::prompt::{PromptResponse, Prompts};
 use clap::Args;
-#[cfg(not(test))]
-use dialoguer::theme::SimpleTheme;
-#[cfg(not(test))]
-use dialoguer::Confirm;
 #[cfg(not(test))]
 use duct::cmd;
 #[cfg(not(test))]
 use std::io::Error;
-
-#[derive(Clone)]
-pub enum PromptResponse {
-    Yes,
-    No,
-}
-
-pub trait Prompts {
-    fn question(&mut self) -> PromptResponse;
-}
-
-#[cfg(not(test))]
-#[derive(Default)]
-pub struct Prompt;
-#[cfg(test)]
-pub use crate::commands::prune::tests::FakePrompt as Prompt;
-
-#[cfg(not(test))]
-impl Prompts for Prompt {
-    fn question(&mut self) -> PromptResponse {
-        let confirm = Confirm::with_theme(&SimpleTheme {})
-            .with_prompt("Do you really want to prune all artifacts?")
-            .default(true)
-            .interact();
-
-        match confirm {
-            Ok(true) => PromptResponse::Yes,
-            _ => PromptResponse::No,
-        }
-    }
-}
 
 pub trait ProcessesToExecute {
     fn docker_prune(&mut self) -> Result<(), std::io::Error>;
@@ -115,44 +81,8 @@ pub fn command<PROMPT: Prompts, PROCESSES: ProcessesToExecute>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::io::prompt::tests::FakePrompt;
     use std::io::Error;
-
-    pub struct FakePrompt {
-        has_been_asked_to_confirm: bool,
-        response: PromptResponse,
-    }
-
-    impl Default for FakePrompt {
-        fn default() -> Self {
-            Self {
-                has_been_asked_to_confirm: false,
-                response: PromptResponse::No,
-            }
-        }
-    }
-
-    impl FakePrompt {
-        pub fn always_confirming() -> Self {
-            Self {
-                has_been_asked_to_confirm: false,
-                response: PromptResponse::Yes,
-            }
-        }
-
-        fn always_denying() -> Self {
-            Self {
-                has_been_asked_to_confirm: false,
-                response: PromptResponse::No,
-            }
-        }
-    }
-
-    impl Prompts for FakePrompt {
-        fn question(&mut self) -> PromptResponse {
-            self.has_been_asked_to_confirm = true;
-            self.response.clone()
-        }
-    }
 
     #[derive(Default)]
     pub struct ProcessesSpy {

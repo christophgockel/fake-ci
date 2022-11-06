@@ -3,13 +3,15 @@ mod error;
 pub mod file;
 mod git;
 mod gitlab;
+mod io;
 
 use crate::commands::prune;
-use crate::commands::prune::{Processes, Prompt};
+use crate::commands::prune::Processes;
 use crate::error::FakeCiError;
 use crate::file::FileAccessError;
 use crate::git::read_details;
 use crate::gitlab::{merge_all, parse, parse_all};
+use crate::io::prompt::Prompt;
 use anyhow::anyhow;
 use clap::{Parser, Subcommand};
 use file::RealFileSystem;
