@@ -76,9 +76,7 @@ subcommand_run() {
 }
 
 subcommand_prune() {
-  docker container ls --filter name=fake-ci --quiet | xargs docker container rm -f
-  docker volume ls --filter name=fake --quiet | xargs docker volume rm -f
-  docker image ls --filter reference=fake-ci:latest --quiet | xargs docker image rm -f
+  "${fake_ci_binary}" prune
 }
 
 subcommand=${1:-}
