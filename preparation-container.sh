@@ -8,8 +8,9 @@ fake_ci_directory=$(dirname "$0")
 fake_ci_binary="${fake_ci_directory}/target/debug/fake-ci"
 
 commands_to_run="
-  chmod 0777 /job;
   cp -Rp /checkout/. /job;
+  chmod 0777 /job;
+  chmod 0777 /artifacts;
 "
 
 docker ps -aq --filter name=fake-ci-preparation | xargs docker rm -f > /dev/null
