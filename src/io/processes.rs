@@ -1,3 +1,5 @@
+use crate::core::Job;
+use crate::io::prompt::Prompts;
 #[cfg(not(test))]
 use duct::cmd;
 #[cfg(not(test))]
@@ -5,6 +7,12 @@ use std::io::Error;
 
 pub trait ProcessesToExecute {
     fn docker_prune(&mut self) -> Result<(), std::io::Error>;
+    fn run_job<P: Prompts>(&mut self, prompt: &P, job: &Job) -> Result<(), std::io::Error>;
+    fn extract_artifacts<P: Prompts>(
+        &mut self,
+        prompt: &P,
+        job: &Job,
+    ) -> Result<(), std::io::Error>;
 }
 
 #[cfg(not(test))]
@@ -59,6 +67,18 @@ impl ProcessesToExecute for Processes {
 
         Ok(())
     }
+
+    fn run_job<P: Prompts>(&mut self, _prompt: &P, _job: &Job) -> Result<(), std::io::Error> {
+        Ok(())
+    }
+
+    fn extract_artifacts<P: Prompts>(
+        &mut self,
+        _prompt: &P,
+        _job: &Job,
+    ) -> Result<(), std::io::Error> {
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -68,11 +88,29 @@ pub mod tests {
     #[derive(Default)]
     pub struct ProcessesSpy {
         pub docker_prune_call_count: usize,
+        pub run_job_call_count: usize,
+        pub extract_artifacts_call_count: usize,
     }
 
-    impl ProcessesToExecute for Processes {
+    impl ProcessesToExecute for ProcessesSpy {
         fn docker_prune(&mut self) -> Result<(), std::io::Error> {
             self.docker_prune_call_count += 1;
+
+            Ok(())
+        }
+
+        fn run_job<P: Prompts>(&mut self, _prompt: &P, _job: &Job) -> Result<(), std::io::Error> {
+            self.run_job_call_count += 1;
+
+            Ok(())
+        }
+
+        fn extract_artifacts<P: Prompts>(
+            &mut self,
+            _prompt: &P,
+            _job: &Job,
+        ) -> Result<(), std::io::Error> {
+            self.extract_artifacts_call_count += 1;
 
             Ok(())
         }

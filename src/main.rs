@@ -1,4 +1,5 @@
 mod commands;
+mod core;
 mod error;
 pub mod file;
 mod git;
@@ -6,6 +7,8 @@ mod gitlab;
 mod io;
 
 use crate::commands::prune;
+use crate::commands::run;
+use crate::core::CiDefinition;
 use crate::error::FakeCiError;
 use crate::file::FileAccessError;
 use crate::git::read_details;
@@ -25,9 +28,16 @@ async fn main() -> Result<(), anyhow::Error> {
     if let Some(command) = arguments.command {
         let mut prompt = Prompt::default();
         let mut processes = Processes::default();
+        let definition = CiDefinition::default();
 
         match command {
             Command::Prune(_) => Ok(prune::command(&mut prompt, &mut processes)?),
+            Command::Run(run) => Ok(run::command(
+                &mut prompt,
+                &mut processes,
+                &definition,
+                run.job,
+            )?),
         }
     } else {
         match run(arguments.file_path).await {
@@ -86,4 +96,6 @@ struct Arguments {
 enum Command {
     /// Remove all Docker artifacts.
     Prune(prune::Prune),
+    /// Run a job.
+    Run(run::Run),
 }
