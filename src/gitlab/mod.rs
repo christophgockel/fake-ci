@@ -1,4 +1,4 @@
-mod configuration;
+pub mod configuration;
 mod deserialise;
 pub mod error;
 mod merge;

@@ -8,10 +8,11 @@ mod io;
 
 use crate::commands::prune;
 use crate::commands::run;
-use crate::core::CiDefinition;
+use crate::core::{convert_configuration, CiDefinition};
 use crate::error::FakeCiError;
 use crate::file::FileAccessError;
 use crate::git::read_details;
+use crate::gitlab::configuration::GitLabConfiguration;
 use crate::gitlab::{merge_all, parse, parse_all};
 use crate::io::processes::Processes;
 use crate::io::prompt::Prompt;
@@ -28,19 +29,22 @@ async fn main() -> Result<(), anyhow::Error> {
     if let Some(command) = arguments.command {
         let mut prompt = Prompt::default();
         let mut processes = Processes::default();
-        let definition = CiDefinition::default();
 
         match command {
             Command::Prune(_) => Ok(prune::command(&mut prompt, &mut processes)?),
-            Command::Run(run) => Ok(run::command(
-                &mut prompt,
-                &mut processes,
-                &definition,
-                run.job,
-            )?),
+            Command::Run(run) => {
+                let definition = read_ci_definition(arguments.file_path).await?;
+
+                Ok(run::command(
+                    &mut prompt,
+                    &mut processes,
+                    &definition,
+                    run.job,
+                )?)
+            }
         }
     } else {
-        match run(arguments.file_path).await {
+        match print_merged_configuration(arguments.file_path).await {
             Ok(_) => Ok(()),
             Err(e) => match e {
                 FakeCiError::File(e) => Err(anyhow!("{}", e)),
@@ -55,7 +59,18 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 }
 
-async fn run(maybe_file_path: Option<String>) -> Result<(), FakeCiError> {
+async fn print_merged_configuration(maybe_file_path: Option<String>) -> Result<(), FakeCiError> {
+    let configuration = read_gitlab_configuration(maybe_file_path).await?;
+    let content = serde_yaml::to_string(&configuration).unwrap();
+
+    println!("{}", content);
+
+    Ok(())
+}
+
+async fn read_gitlab_configuration(
+    maybe_file_path: Option<String>,
+) -> Result<GitLabConfiguration, FakeCiError> {
     let path_to_config_file = if maybe_file_path.is_none() {
         let mut path = current_dir().map_err(FakeCiError::other)?;
         path.push(".gitlab-ci.yml");
@@ -76,11 +91,14 @@ async fn run(maybe_file_path: Option<String>) -> Result<(), FakeCiError> {
         parse_all(&configuration.include, &file_access, &git_details).await?;
     merge_all(additional_configurations, &mut configuration)?;
 
-    let content = serde_yaml::to_string(&configuration).unwrap();
+    Ok(configuration)
+}
 
-    println!("{}", content);
+async fn read_ci_definition(maybe_file_path: Option<String>) -> Result<CiDefinition, FakeCiError> {
+    let configuration = read_gitlab_configuration(maybe_file_path).await?;
+    let definition = convert_configuration(&configuration)?;
 
-    Ok(())
+    Ok(definition)
 }
 
 #[derive(Parser)]
