@@ -596,6 +596,7 @@ mod tests {
         async fn resolves_gitlab_project_files() {
             let git_details = GitDetails {
                 host: "https://example-gitlab.com".into(),
+                ..Default::default()
             };
             let file_a_content = "
                 variables:
@@ -682,6 +683,7 @@ mod tests {
         async fn resolves_nested_remote_files_as_local_to_the_host() {
             let git_details = GitDetails {
                 host: "https://example-gitlab.com".into(),
+                ..Default::default()
             };
             let first_include = "
                 include:

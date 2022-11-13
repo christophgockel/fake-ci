@@ -1,3 +1,4 @@
+use duct::cmd;
 use regex::Regex;
 use std::process::Command;
 use thiserror::Error;
@@ -13,6 +14,8 @@ pub enum GitError {
     UnsupportedUrl(String),
     #[error("URL for remote git host is invalid: {0}")]
     InvalidUrl(#[source] Box<dyn std::error::Error + Send + Sync>),
+    #[error("unable to get latest SHA {0}")]
+    Sha(#[source] Box<dyn std::error::Error + Send + Sync>),
 }
 
 impl GitError {
@@ -23,11 +26,16 @@ impl GitError {
     pub fn invalid_url(error: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> Self {
         GitError::InvalidUrl(error.into())
     }
+
+    pub fn sha(error: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> Self {
+        GitError::Sha(error.into())
+    }
 }
 
 #[derive(Default)]
 pub struct GitDetails {
     pub host: String,
+    pub sha: String,
 }
 
 pub fn read_details() -> Result<GitDetails, GitError> {
@@ -63,8 +71,12 @@ pub fn read_details() -> Result<GitDetails, GitError> {
     } else {
         return Err(GitError::UnsupportedUrl(content));
     }
+    let sha = cmd!("git", "rev-parse", "--short", "HEAD")
+        .read()
+        .map_err(GitError::sha)?;
 
     Ok(GitDetails {
         host: host.unwrap_or_else(|| "".into()),
+        sha,
     })
 }
