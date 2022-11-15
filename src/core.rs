@@ -1,6 +1,6 @@
 use crate::error::FakeCiError;
 use crate::gitlab;
-use crate::gitlab::configuration::{GitLabConfiguration, ListOfStrings};
+use crate::gitlab::configuration::{GitLabConfiguration, ListOfStrings, OneOrMoreNeeds};
 use std::collections::HashMap;
 
 #[derive(Default)]
@@ -13,6 +13,7 @@ pub struct Job {
     pub script: Vec<String>,
     pub variables: Vec<(String, String)>,
     pub artifacts: Vec<String>,
+    pub required_artifacts: HashMap<String, Vec<String>>,
 }
 
 pub fn convert_configuration(
@@ -21,18 +22,33 @@ pub fn convert_configuration(
     let jobs = configuration
         .jobs
         .iter()
-        .map(|(key, value)| Ok((key.clone(), convert_job(value)?)))
+        .map(|(key, value)| Ok((key.clone(), convert_job(value, &configuration.jobs)?)))
         .collect::<Result<HashMap<_, _>, FakeCiError>>()?;
 
     Ok(CiDefinition { jobs })
 }
 
-fn convert_job(job: &gitlab::configuration::Job) -> Result<Job, FakeCiError> {
+fn convert_job(
+    job: &gitlab::configuration::Job,
+    other_jobs: &HashMap<String, gitlab::configuration::Job>,
+) -> Result<Job, FakeCiError> {
     let mut final_script = vec![];
 
     final_script.extend(content_or_default(&job.before_script));
     final_script.extend(content_or_default(&job.script));
     final_script.extend(content_or_default(&job.after_script));
+
+    let mut required: HashMap<String, Vec<String>> = HashMap::new();
+
+    if let Some(OneOrMoreNeeds(needs)) = &job.needs {
+        for need in needs.iter() {
+            let other_job = other_jobs.get(&need.job).unwrap();
+
+            if let Some(job_artifacts) = &other_job.artifacts {
+                required.insert(need.job.clone(), job_artifacts.paths.clone());
+            }
+        }
+    }
 
     Ok(Job {
         script: final_script,
@@ -42,6 +58,7 @@ fn convert_job(job: &gitlab::configuration::Job) -> Result<Job, FakeCiError> {
             .as_ref()
             .map(|artifacts| artifacts.paths.clone())
             .unwrap_or_default(),
+        required_artifacts: required,
     })
 }
 
@@ -59,7 +76,7 @@ pub mod tests {
     mod test_gitlab_conversion {
         use super::*;
         use crate::gitlab;
-        use crate::gitlab::configuration::ListOfStrings;
+        use crate::gitlab::configuration::{Artifacts, ListOfStrings, Needs, OneOrMoreNeeds};
 
         #[test]
         fn converts_gitlab_jobs() {
@@ -78,18 +95,20 @@ pub mod tests {
 
         #[test]
         fn copies_job_variables() {
+            let other_jobs = HashMap::new();
             let gitlab_job = gitlab::configuration::Job {
                 variables: vec![("VARIABLE".into(), "value".into())],
                 ..Default::default()
             };
 
-            let job = convert_job(&gitlab_job).unwrap();
+            let job = convert_job(&gitlab_job, &other_jobs).unwrap();
 
             assert_eq!(job.variables, vec![("VARIABLE".into(), "value".into())]);
         }
 
         #[test]
         fn combines_before_script_main_script_and_after_script_into_one() {
+            let other_jobs = HashMap::new();
             let gitlab_job = gitlab::configuration::Job {
                 before_script: Some(ListOfStrings(vec!["before-script".into()])),
                 script: Some(ListOfStrings(vec!["script".into()])),
@@ -97,7 +116,7 @@ pub mod tests {
                 ..Default::default()
             };
 
-            let job = convert_job(&gitlab_job).unwrap();
+            let job = convert_job(&gitlab_job, &other_jobs).unwrap();
 
             assert_eq!(
                 job.script,
@@ -111,6 +130,7 @@ pub mod tests {
 
         #[test]
         fn keeps_list_of_artifacts_to_extract() {
+            let other_jobs = HashMap::new();
             let gitlab_job = gitlab::configuration::Job {
                 artifacts: Some(gitlab::configuration::Artifacts {
                     paths: vec!["file-1".into(), "file-2".into()],
@@ -119,11 +139,42 @@ pub mod tests {
                 ..Default::default()
             };
 
-            let job = convert_job(&gitlab_job).unwrap();
+            let job = convert_job(&gitlab_job, &other_jobs).unwrap();
 
             assert_eq!(
                 job.artifacts,
                 vec!["file-1".to_string(), "file-2".to_string(),]
+            );
+        }
+
+        #[test]
+        fn knows_which_artifacts_it_needs_from_other_jobs() {
+            let other_jobs = HashMap::from([(
+                "other-job".to_string(),
+                gitlab::configuration::Job {
+                    artifacts: Some(Artifacts {
+                        paths: vec!["file-1".into(), "file-2".into()],
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            )]);
+            let gitlab_job = gitlab::configuration::Job {
+                needs: Some(OneOrMoreNeeds(vec![Needs {
+                    job: "other-job".into(),
+                    artifacts: true,
+                }])),
+                ..Default::default()
+            };
+
+            let job = convert_job(&gitlab_job, &other_jobs).unwrap();
+
+            assert_eq!(
+                job.required_artifacts,
+                HashMap::from([(
+                    "other-job".to_string(),
+                    vec!["file-1".to_string(), "file-2".to_string()],
+                )]),
             );
         }
     }
