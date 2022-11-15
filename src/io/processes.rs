@@ -7,7 +7,12 @@ use std::io::Error;
 
 pub trait ProcessesToExecute {
     fn docker_prune(&mut self) -> Result<(), std::io::Error>;
-    fn run_job<P: Prompts>(&mut self, prompt: &P, job: &Job) -> Result<(), std::io::Error>;
+    fn run_job<P: Prompts>(
+        &mut self,
+        prompt: &P,
+        context: &Context,
+        job: &Job,
+    ) -> Result<(), std::io::Error>;
     fn extract_artifacts<P: Prompts>(
         &mut self,
         prompt: &P,
@@ -18,6 +23,7 @@ pub trait ProcessesToExecute {
 #[cfg(not(test))]
 #[derive(Default)]
 pub struct Processes;
+use crate::Context;
 #[cfg(test)]
 pub use tests::ProcessesSpy as Processes;
 
@@ -68,7 +74,74 @@ impl ProcessesToExecute for Processes {
         Ok(())
     }
 
-    fn run_job<P: Prompts>(&mut self, _prompt: &P, _job: &Job) -> Result<(), std::io::Error> {
+    fn run_job<P: Prompts>(
+        &mut self,
+        _prompt: &P,
+        context: &Context,
+        _job: &Job,
+    ) -> Result<(), std::io::Error> {
+        let checkout_commands_to_run = format!(
+            "
+              cd /checkout;
+              git init;
+              git remote add origin /project;
+              git fetch origin --quiet;
+              git checkout --quiet {};
+              (cd /project; git add --intent-to-add .; git diff) | git apply --allow-empty --quiet;
+              (cd /project; git reset --mixed)
+            ",
+            context.git_sha,
+        );
+
+        println!("cleaning up first...");
+
+        cmd!(
+            "docker",
+            "ps",
+            "--all",
+            "--quiet",
+            "--filter",
+            "name=fake-ci-checkout"
+        )
+        .pipe(cmd!("xargs", "docker", "rm", "--force"))
+        .read()?;
+
+        println!("run checkout container");
+
+        let run = cmd!(
+            "docker",
+            "run",
+            "--tty",
+            "--detach",
+            "--volume",
+            format!("{}:/project", context.current_directory),
+            "--volume",
+            "/checkout",
+            "--volume",
+            "fake-ci-artifacts:/artifacts",
+            "--volume",
+            "/job",
+            "--name",
+            "fake-ci-checkout",
+            "fake-ci:latest"
+        )
+        .read()?;
+
+        println!("  {}", run);
+
+        println!("exec in container...");
+
+        let exec = cmd!(
+            "docker",
+            "exec",
+            "fake-ci-checkout",
+            "sh",
+            "-c",
+            checkout_commands_to_run
+        )
+        .read()?;
+        println!(">  {}", exec);
+
         Ok(())
     }
 
@@ -99,7 +172,12 @@ pub mod tests {
             Ok(())
         }
 
-        fn run_job<P: Prompts>(&mut self, _prompt: &P, _job: &Job) -> Result<(), std::io::Error> {
+        fn run_job<P: Prompts>(
+            &mut self,
+            _prompt: &P,
+            _context: &Context,
+            _job: &Job,
+        ) -> Result<(), std::io::Error> {
             self.run_job_call_count += 1;
 
             Ok(())

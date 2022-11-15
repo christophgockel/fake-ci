@@ -2,6 +2,7 @@ use crate::commands::CommandError;
 use crate::core::CiDefinition;
 use crate::io::processes::ProcessesToExecute;
 use crate::io::prompt::Prompts;
+use crate::Context;
 use clap::Args;
 
 #[derive(Args)]
@@ -13,12 +14,13 @@ pub struct Run {
 pub fn command<PROMPT: Prompts, PROCESSES: ProcessesToExecute>(
     prompt: &mut PROMPT,
     processes: &mut PROCESSES,
+    context: &Context,
     definition: &CiDefinition,
     job_name: String,
 ) -> Result<(), CommandError> {
     if let Some(job) = definition.jobs.get(&job_name) {
         processes
-            .run_job(prompt, job)
+            .run_job(prompt, context, job)
             .map_err(CommandError::execution)?;
         processes
             .extract_artifacts(prompt, job)
@@ -42,11 +44,13 @@ mod tests {
     fn returns_error_if_job_name_is_unknown() {
         let mut prompt = FakePrompt::always_confirming();
         let mut processes = ProcessesSpy::default();
+        let context = Context::default();
         let definition = CiDefinition::default();
 
         let result = command(
             &mut prompt,
             &mut processes,
+            &context,
             &definition,
             "unknown job".into(),
         );
@@ -58,12 +62,20 @@ mod tests {
     fn valid_jobs_are_passed_to_be_executed() {
         let mut prompt = FakePrompt::always_confirming();
         let mut processes = ProcessesSpy::default();
+        let context = Context::default();
         let job = Job::default();
         let definition = CiDefinition {
             jobs: HashMap::from([("job".into(), job)]),
         };
 
-        command(&mut prompt, &mut processes, &definition, "job".into()).unwrap();
+        command(
+            &mut prompt,
+            &mut processes,
+            &context,
+            &definition,
+            "job".into(),
+        )
+        .unwrap();
 
         assert_eq!(processes.run_job_call_count, 1);
     }
@@ -72,12 +84,20 @@ mod tests {
     fn extracts_artifacts() {
         let mut prompt = FakePrompt::always_confirming();
         let mut processes = ProcessesSpy::default();
+        let context = Context::default();
         let job = Job::default();
         let definition = CiDefinition {
             jobs: HashMap::from([("job".into(), job)]),
         };
 
-        command(&mut prompt, &mut processes, &definition, "job".into()).unwrap();
+        command(
+            &mut prompt,
+            &mut processes,
+            &context,
+            &definition,
+            "job".into(),
+        )
+        .unwrap();
 
         assert_eq!(processes.extract_artifacts_call_count, 1);
     }

@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use reqwest::IntoUrl;
 #[cfg(test)]
 use std::collections::HashMap;
+use std::env::current_dir;
 use std::io::{Cursor, Read};
 use std::path::Path;
 use thiserror::Error;
@@ -50,6 +51,8 @@ pub trait FileAccess {
         &self,
         url: URL,
     ) -> Result<Box<Cursor<Vec<u8>>>, FileAccessError>;
+
+    fn read_current_directory(&self) -> Result<String, FileAccessError>;
 }
 
 #[derive(Default)]
@@ -84,6 +87,12 @@ impl FileAccess for RealFileSystem {
             .map_err(|e| FileAccessError::cannot_read_remote(&url, e))?;
 
         Ok(Box::new(Cursor::new(response.to_vec())))
+    }
+
+    fn read_current_directory(&self) -> Result<String, FileAccessError> {
+        let current_path = current_dir().map_err(|e| FileAccessError::cannot_read(".", e))?;
+
+        Ok(current_path.to_string_lossy().to_string())
     }
 }
 
@@ -132,5 +141,9 @@ impl FileAccess for StubFiles {
         url: URL,
     ) -> Result<Box<Cursor<Vec<u8>>>, FileAccessError> {
         self.read_local_file(url.as_str())
+    }
+
+    fn read_current_directory(&self) -> Result<String, FileAccessError> {
+        Ok(".".into())
     }
 }

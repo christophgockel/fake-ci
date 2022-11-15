@@ -10,7 +10,7 @@ use crate::commands::prune;
 use crate::commands::run;
 use crate::core::{convert_configuration, CiDefinition};
 use crate::error::FakeCiError;
-use crate::file::FileAccessError;
+use crate::file::{FileAccess, FileAccessError};
 use crate::git::read_details;
 use crate::gitlab::configuration::GitLabConfiguration;
 use crate::gitlab::{merge_all, parse, parse_all};
@@ -27,6 +27,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let arguments = Arguments::parse();
 
     if let Some(command) = arguments.command {
+        let file_access = RealFileSystem::default();
         let mut prompt = Prompt::default();
         let mut processes = Processes::default();
 
@@ -34,10 +35,16 @@ async fn main() -> Result<(), anyhow::Error> {
             Command::Prune(_) => Ok(prune::command(&mut prompt, &mut processes)?),
             Command::Run(run) => {
                 let definition = read_ci_definition(arguments.file_path).await?;
+                let git_details = read_details()?;
+                let context = Context {
+                    current_directory: file_access.read_current_directory()?,
+                    git_sha: git_details.sha,
+                };
 
                 Ok(run::command(
                     &mut prompt,
                     &mut processes,
+                    &context,
                     &definition,
                     run.job,
                 )?)
@@ -116,4 +123,10 @@ enum Command {
     Prune(prune::Prune),
     /// Run a job.
     Run(run::Run),
+}
+
+#[derive(Default)]
+pub struct Context {
+    pub current_directory: String,
+    pub git_sha: String,
 }
