@@ -78,7 +78,7 @@ impl ProcessesToExecute for Processes {
         &mut self,
         _prompt: &P,
         context: &Context,
-        _job: &Job,
+        job: &Job,
     ) -> Result<(), std::io::Error> {
         let checkout_commands_to_run = format!(
             "
@@ -141,6 +141,54 @@ impl ProcessesToExecute for Processes {
         )
         .read()?;
         println!(">  {}", exec);
+
+        let prepare_commands_to_run = "
+          cp -Rp /checkout/. /job;
+          chmod 0777 /job;
+          chmod 0777 /artifacts;
+        ";
+
+        println!("preparing code");
+
+        let run_prepare = cmd!(
+            "docker",
+            "exec",
+            "fake-ci-checkout",
+            "sh",
+            "-c",
+            prepare_commands_to_run,
+        )
+        .read()?;
+
+        println!(">  {}", run_prepare);
+
+        println!("preparing artifacts");
+        let mut artifact_commands = vec![];
+
+        for (dependant_job_name, files) in &job.required_artifacts {
+            //
+            for file in files {
+                artifact_commands.push(format!(
+                    "cp -Rp \"/artifacts/{}/{}\" /job;",
+                    dependant_job_name, file
+                ));
+            }
+        }
+
+        if !artifact_commands.is_empty() {
+            let run_artifacts = cmd!(
+                "docker",
+                "exec",
+                "fake-ci-checkout",
+                "sh",
+                "-c",
+                prepare_commands_to_run,
+            )
+            .read()?;
+            println!(">  {}", run_artifacts);
+        } else {
+            println!("no artifacts");
+        }
 
         Ok(())
     }
