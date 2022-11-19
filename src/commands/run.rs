@@ -20,7 +20,7 @@ pub fn command<PROMPT: Prompts, PROCESSES: ProcessesToExecute>(
 ) -> Result<(), CommandError> {
     if let Some(job) = definition.jobs.get(&job_name) {
         processes
-            .run_job(prompt, context, job)
+            .run_job(prompt, context, &job_name, job)
             .map_err(CommandError::execution)?;
         processes
             .extract_artifacts(prompt, job)

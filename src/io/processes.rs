@@ -1,6 +1,9 @@
 use crate::core::Job;
 use crate::io::prompt::Prompts;
 #[cfg(not(test))]
+use crate::io::variables::{concatenate_variables, interpolate};
+use crate::Context;
+#[cfg(not(test))]
 use duct::cmd;
 #[cfg(not(test))]
 use std::io::Error;
@@ -11,6 +14,7 @@ pub trait ProcessesToExecute {
         &mut self,
         prompt: &P,
         context: &Context,
+        job_name: &str,
         job: &Job,
     ) -> Result<(), std::io::Error>;
     fn extract_artifacts<P: Prompts>(
@@ -23,7 +27,6 @@ pub trait ProcessesToExecute {
 #[cfg(not(test))]
 #[derive(Default)]
 pub struct Processes;
-use crate::Context;
 #[cfg(test)]
 pub use tests::ProcessesSpy as Processes;
 
@@ -78,6 +81,7 @@ impl ProcessesToExecute for Processes {
         &mut self,
         _prompt: &P,
         context: &Context,
+        job_name: &str,
         job: &Job,
     ) -> Result<(), std::io::Error> {
         let checkout_commands_to_run = format!(
@@ -166,7 +170,6 @@ impl ProcessesToExecute for Processes {
         let mut artifact_commands = vec![];
 
         for (dependant_job_name, files) in &job.required_artifacts {
-            //
             for file in files {
                 artifact_commands.push(format!(
                     "cp -Rp \"/artifacts/{}/{}\" /job;",
@@ -174,6 +177,7 @@ impl ProcessesToExecute for Processes {
                 ));
             }
         }
+        println!("preparing artifacts {}", artifact_commands.join(";"));
 
         if !artifact_commands.is_empty() {
             let run_artifacts = cmd!(
@@ -182,12 +186,73 @@ impl ProcessesToExecute for Processes {
                 "fake-ci-checkout",
                 "sh",
                 "-c",
-                prepare_commands_to_run,
+                artifact_commands.join(";"),
             )
             .read()?;
             println!(">  {}", run_artifacts);
         } else {
             println!("no artifacts");
+        }
+
+        let interpolated_image_name = interpolate(&job.image, &job.variables)?;
+
+        println!("cleaning up previous job");
+
+        cmd!("docker", "ps", "-aq", "--filter", "name=fake-ci-job")
+            .pipe(cmd!("xargs", "docker", "rm", "-f"))
+            .read()?;
+
+        println!("running job  on {}", interpolated_image_name);
+
+        let start_job = cmd!(
+            "docker",
+            "run",
+            "--tty",
+            "--detach",
+            "--volumes-from",
+            "fake-ci-checkout",
+            "--name",
+            "fake-ci-job",
+            interpolated_image_name
+        )
+        .read()?;
+
+        println!("> {}", start_job);
+
+        let variables = concatenate_variables(&job.variables);
+
+        let full_script = format!("set -x\ncd /job; {} {}", variables, job.script.join(";"));
+
+        let run_job = cmd!("docker", "exec", "fake-ci-job", "sh", "-c", full_script).read()?;
+        println!("> {}", run_job);
+
+        if !job.artifacts.is_empty() {
+            println!("extracting artifacts");
+
+            let mut artifact_commands = vec![format!("mkdir -p \"/artifacts/{}\"", job_name)];
+
+            for artifact in &job.artifacts {
+                artifact_commands.push(format!(
+                    "cp -R /job/{} \"/artifacts/{}/\"",
+                    artifact, job_name
+                ));
+            }
+
+            println!("copying {}", artifact_commands.join(";"));
+
+            let run_artifacts = cmd!(
+                "docker",
+                "exec",
+                "fake-ci-job",
+                "sh",
+                "-c",
+                artifact_commands.join(";")
+            )
+            .read()?;
+
+            println!("> {}", run_artifacts);
+        } else {
+            println!("no artifacts to be extracted");
         }
 
         Ok(())
@@ -224,6 +289,7 @@ pub mod tests {
             &mut self,
             _prompt: &P,
             _context: &Context,
+            _job_name: &str,
             _job: &Job,
         ) -> Result<(), std::io::Error> {
             self.run_job_call_count += 1;

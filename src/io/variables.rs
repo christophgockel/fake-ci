@@ -1,14 +1,16 @@
-use crate::error::FakeCiError;
 use duct::cmd;
 
-pub fn interpolate(value: &str, variables: &Vec<(String, String)>) -> Result<String, FakeCiError> {
+pub fn interpolate(
+    value: &str,
+    variables: &Vec<(String, String)>,
+) -> Result<String, std::io::Error> {
     let variables = concatenate_variables(variables);
     let command = format!("{} echo \"{}\"", variables, value);
 
-    cmd!("sh", "-c", command).read().map_err(FakeCiError::other)
+    cmd!("sh", "-c", command).read()
 }
 
-fn concatenate_variables(variables: &Vec<(String, String)>) -> String {
+pub fn concatenate_variables(variables: &Vec<(String, String)>) -> String {
     let mut lines = vec![];
 
     for (name, value) in variables {

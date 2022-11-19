@@ -13,6 +13,8 @@ pub enum FakeCiError {
     GitLab(#[from] GitLabError),
     #[error("unknown error: {0}")]
     Other(#[source] Box<dyn std::error::Error + Send + Sync>),
+    #[error(transparent)]
+    IO(#[from] std::io::Error),
 }
 
 impl FakeCiError {

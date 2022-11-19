@@ -10,6 +10,7 @@ pub struct CiDefinition {
 
 #[derive(Debug, Default, PartialEq, Clone)]
 pub struct Job {
+    pub image: String,
     pub script: Vec<String>,
     pub variables: Vec<(String, String)>,
     pub artifacts: Vec<String>,
@@ -51,6 +52,7 @@ fn convert_job(
     }
 
     Ok(Job {
+        image: job.image.as_ref().cloned().unwrap_or_default(),
         script: final_script,
         variables: job.variables.clone(),
         artifacts: job
@@ -91,6 +93,19 @@ pub mod tests {
             let definition = convert_configuration(&gitlab_configuration).unwrap();
 
             assert_eq!(definition.jobs.len(), 2);
+        }
+
+        #[test]
+        fn copies_job_image() {
+            let other_jobs = HashMap::new();
+            let gitlab_job = gitlab::configuration::Job {
+                image: Some("image:name".into()),
+                ..Default::default()
+            };
+
+            let job = convert_job(&gitlab_job, &other_jobs).unwrap();
+
+            assert_eq!(job.image, "image:name".to_string());
         }
 
         #[test]

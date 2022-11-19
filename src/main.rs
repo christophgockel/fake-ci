@@ -61,6 +61,7 @@ async fn main() -> Result<(), anyhow::Error> {
                     e
                 )),
                 FakeCiError::Other(e) => Err(anyhow!("Unexpected error: {}", e)),
+                FakeCiError::IO(e) => Err(anyhow!("Unexpected IO error: {}", e)),
             },
         }
     }
