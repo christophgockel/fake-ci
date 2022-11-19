@@ -1,4 +1,6 @@
 use crate::core::Job;
+#[cfg(not(test))]
+use crate::io::docker::{build_image, image_needs_to_be_built};
 use crate::io::prompt::Prompts;
 #[cfg(not(test))]
 use crate::io::variables::{concatenate_variables, interpolate};
@@ -64,7 +66,7 @@ impl ProcessesToExecute for Processes {
             "image",
             "ls",
             "--filter",
-            "reference=fake-ci:latest",
+            "reference=fake-ci",
             "--quiet"
         )
         .pipe(cmd!("xargs", "docker", "image", "rm", "-f"))
@@ -84,6 +86,10 @@ impl ProcessesToExecute for Processes {
         job_name: &str,
         job: &Job,
     ) -> Result<(), std::io::Error> {
+        if image_needs_to_be_built(&context.image_tag)? {
+            build_image(&context.image_tag)?;
+        }
+
         let checkout_commands_to_run = format!(
             "
               cd /checkout;
@@ -127,7 +133,7 @@ impl ProcessesToExecute for Processes {
             "/job",
             "--name",
             "fake-ci-checkout",
-            "fake-ci:latest"
+            &context.image_tag
         )
         .read()?;
 

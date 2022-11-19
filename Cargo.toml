@@ -4,6 +4,9 @@ description = "Run your CI pipelines locally for quicker iterations and faster f
 version = "0.1.0"
 edition = "2021"
 
+[features]
+docker_tests = [] # used to separate tests that rely on Docker
+
 [dependencies]
 anyhow = "1.0"
 async-recursion = "1.0"

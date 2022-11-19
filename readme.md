@@ -40,6 +40,23 @@ This is because `fake-ci` expects the `.gitlab-ci.yml` configuration to exist in
 Supporting custom paths for this is a future use case that is currently not a priority.
 
 
+#### Integration Tests
+
+There are some tests that verify the overall functionality of the `fake-ci` binary.
+These tests are located in the top-level `tests` directory.
+
+
+##### Docker
+
+Some tests interact directly with Docker and are separated by a feature flag which is disabled by default when running `cargo test`.
+
+Running the Docker specific tests can be done via:
+
+```
+cargo test docker --features docker_tests
+```
+
+
 ## Build Steps
 
 Eventually Fake CI can, and potentially should, be its own dedicated tool.
