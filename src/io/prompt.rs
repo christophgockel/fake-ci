@@ -1,4 +1,6 @@
 #[cfg(not(test))]
+use crossterm::style::Stylize;
+#[cfg(not(test))]
 use dialoguer::theme::SimpleTheme;
 #[cfg(not(test))]
 use dialoguer::Confirm;
@@ -17,7 +19,10 @@ pub use tests::FakePrompt as Prompt;
 impl Prompts for Prompt {
     fn question(&mut self) -> PromptResponse {
         let confirm = Confirm::with_theme(&SimpleTheme {})
-            .with_prompt("Do you really want to prune all artifacts?")
+            .with_prompt(format!(
+                "{}",
+                "Do you really want to prune all artifacts?".blue()
+            ))
             .default(true)
             .interact();
 

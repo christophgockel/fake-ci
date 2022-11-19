@@ -12,6 +12,7 @@ anyhow = "1.0"
 async-recursion = "1.0"
 async-trait = "0.1"
 clap = { version = "4.0", features = ["derive"] }
+crossterm = "0.25"
 dialoguer = "0.10"
 duct = "0.13"
 regex = "1.6"
