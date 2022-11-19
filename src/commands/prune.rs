@@ -6,12 +6,14 @@ use clap::Args;
 #[derive(Args)]
 pub struct Prune;
 
-pub fn command<PROMPT: Prompts, PROCESSES: ProcessesToExecute>(
-    prompt: &mut PROMPT,
+pub fn command<PROMPTS: Prompts, PROCESSES: ProcessesToExecute>(
+    prompts: &mut PROMPTS,
     processes: &mut PROCESSES,
 ) -> Result<(), CommandError> {
-    if let PromptResponse::Yes = prompt.question() {
-        processes.docker_prune().map_err(CommandError::unknown)?;
+    if let PromptResponse::Yes = prompts.question() {
+        processes
+            .docker_prune(prompts)
+            .map_err(CommandError::unknown)?;
     }
 
     Ok(())

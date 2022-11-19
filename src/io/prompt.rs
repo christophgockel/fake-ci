@@ -7,6 +7,7 @@ use dialoguer::Confirm;
 
 pub trait Prompts {
     fn question(&mut self) -> PromptResponse;
+    fn info(&mut self, message: &str);
 }
 
 #[cfg(not(test))]
@@ -30,6 +31,10 @@ impl Prompts for Prompt {
             Ok(true) => PromptResponse::Yes,
             _ => PromptResponse::No,
         }
+    }
+
+    fn info(&mut self, message: &str) {
+        println!("{}", message.blue());
     }
 }
 
@@ -78,5 +83,7 @@ pub mod tests {
             self.has_been_asked_to_confirm = true;
             self.response.clone()
         }
+
+        fn info(&mut self, _message: &str) {}
     }
 }
