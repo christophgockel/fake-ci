@@ -1,3 +1,4 @@
+pub mod image;
 pub mod prune;
 pub mod run;
 

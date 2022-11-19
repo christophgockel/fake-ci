@@ -2,6 +2,8 @@ FROM alpine:latest
 
 RUN apk add git --no-cache
 
-COPY ./gitconfig /root/.gitconfig
+RUN git config --global init.defaultBranch none && \
+  git config --global apply.whitespace nowarn && \
+  git config --global safe.directory /project
 
 ENTRYPOINT ["sh"]

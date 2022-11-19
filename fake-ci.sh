@@ -62,7 +62,7 @@ subcommand_run() {
   if [ -z "$fake_ci_image_id" ]
   then
     echo "Fake CI image not found. Building now."
-    docker build -t fake-ci:latest "$fake_ci_directory"
+    cat "$fake_ci_directory/Dockerfile" | docker build -t fake-ci:latest -
   fi
 
   echo "Checking out Code"

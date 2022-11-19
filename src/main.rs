@@ -6,8 +6,7 @@ mod git;
 mod gitlab;
 mod io;
 
-use crate::commands::prune;
-use crate::commands::run;
+use crate::commands::{image, prune, run};
 use crate::core::{convert_configuration, CiDefinition};
 use crate::error::FakeCiError;
 use crate::file::{FileAccess, FileAccessError};
@@ -28,18 +27,20 @@ async fn main() -> Result<(), anyhow::Error> {
 
     if let Some(command) = arguments.command {
         let file_access = RealFileSystem::default();
+        let git_details = read_details()?;
+        let context = Context {
+            current_directory: file_access.read_current_directory()?,
+            git_sha: git_details.sha,
+            image_tag: format!("fake-ci:{}", env!("CARGO_PKG_VERSION")),
+        };
         let mut prompt = Prompt::default();
         let mut processes = Processes::default();
 
         match command {
+            Command::Image(_) => Ok(image::command(&context)?),
             Command::Prune(_) => Ok(prune::command(&mut prompt, &mut processes)?),
             Command::Run(run) => {
                 let definition = read_ci_definition(arguments.file_path).await?;
-                let git_details = read_details()?;
-                let context = Context {
-                    current_directory: file_access.read_current_directory()?,
-                    git_sha: git_details.sha,
-                };
 
                 Ok(run::command(
                     &mut prompt,
@@ -120,6 +121,8 @@ struct Arguments {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Create Fake CI's base image.
+    Image(image::Image),
     /// Remove all Docker artifacts.
     Prune(prune::Prune),
     /// Run a job.
@@ -130,4 +133,5 @@ enum Command {
 pub struct Context {
     pub current_directory: String,
     pub git_sha: String,
+    pub image_tag: String,
 }
