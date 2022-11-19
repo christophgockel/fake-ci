@@ -6,7 +6,7 @@ use dialoguer::theme::SimpleTheme;
 use dialoguer::Confirm;
 
 pub trait Prompts {
-    fn question(&mut self) -> PromptResponse;
+    fn question(&mut self, question: &str) -> PromptResponse;
     fn info(&mut self, message: &str);
 }
 
@@ -18,12 +18,9 @@ pub use tests::FakePrompt as Prompt;
 
 #[cfg(not(test))]
 impl Prompts for Prompt {
-    fn question(&mut self) -> PromptResponse {
+    fn question(&mut self, question: &str) -> PromptResponse {
         let confirm = Confirm::with_theme(&SimpleTheme {})
-            .with_prompt(format!(
-                "{}",
-                "Do you really want to prune all artifacts?".blue()
-            ))
+            .with_prompt(format!("{}", question.blue()))
             .default(true)
             .interact();
 
@@ -79,7 +76,7 @@ pub mod tests {
     }
 
     impl Prompts for FakePrompt {
-        fn question(&mut self) -> PromptResponse {
+        fn question(&mut self, _question: &str) -> PromptResponse {
             self.has_been_asked_to_confirm = true;
             self.response.clone()
         }

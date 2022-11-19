@@ -10,7 +10,7 @@ pub fn command<PROMPTS: Prompts, PROCESSES: ProcessesToExecute>(
     prompts: &mut PROMPTS,
     processes: &mut PROCESSES,
 ) -> Result<(), CommandError> {
-    if let PromptResponse::Yes = prompts.question() {
+    if let PromptResponse::Yes = prompts.question("Do you really want to prune all artifacts?") {
         processes
             .docker_prune(prompts)
             .map_err(CommandError::unknown)?;
