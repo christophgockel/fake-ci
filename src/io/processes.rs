@@ -14,7 +14,7 @@ pub trait ProcessesToExecute {
     fn docker_prune<P: Prompts>(&mut self, prompts: &mut P) -> Result<(), std::io::Error>;
     fn run_job<P: Prompts>(
         &mut self,
-        prompts: &P,
+        prompts: &mut P,
         context: &Context,
         job_name: &str,
         job: &Job,
@@ -81,12 +81,13 @@ impl ProcessesToExecute for Processes {
 
     fn run_job<P: Prompts>(
         &mut self,
-        _prompt: &P,
+        prompts: &mut P,
         context: &Context,
         job_name: &str,
         job: &Job,
     ) -> Result<(), std::io::Error> {
         if image_needs_to_be_built(&context.image_tag)? {
+            prompts.info("Building Fake CI image first");
             build_image(&context.image_tag)?;
         }
 
@@ -103,8 +104,6 @@ impl ProcessesToExecute for Processes {
             context.git_sha,
         );
 
-        println!("cleaning up first...");
-
         cmd!(
             "docker",
             "ps",
@@ -116,9 +115,7 @@ impl ProcessesToExecute for Processes {
         .pipe(cmd!("xargs", "docker", "rm", "--force"))
         .read()?;
 
-        println!("run checkout container");
-
-        let run = cmd!(
+        cmd!(
             "docker",
             "run",
             "--tty",
@@ -137,11 +134,9 @@ impl ProcessesToExecute for Processes {
         )
         .read()?;
 
-        println!("  {}", run);
+        prompts.info("Checking out code");
 
-        println!("exec in container...");
-
-        let exec = cmd!(
+        cmd!(
             "docker",
             "exec",
             "fake-ci-checkout",
@@ -149,8 +144,7 @@ impl ProcessesToExecute for Processes {
             "-c",
             checkout_commands_to_run
         )
-        .read()?;
-        println!(">  {}", exec);
+        .run()?;
 
         let prepare_commands_to_run = "
           cp -Rp /checkout/. /job;
@@ -158,9 +152,7 @@ impl ProcessesToExecute for Processes {
           chmod 0777 /artifacts;
         ";
 
-        println!("preparing code");
-
-        let run_prepare = cmd!(
+        cmd!(
             "docker",
             "exec",
             "fake-ci-checkout",
@@ -170,9 +162,6 @@ impl ProcessesToExecute for Processes {
         )
         .read()?;
 
-        println!(">  {}", run_prepare);
-
-        println!("preparing artifacts");
         let mut artifact_commands = vec![];
 
         for (dependant_job_name, files) in &job.required_artifacts {
@@ -183,10 +172,11 @@ impl ProcessesToExecute for Processes {
                 ));
             }
         }
-        println!("preparing artifacts {}", artifact_commands.join(";"));
 
         if !artifact_commands.is_empty() {
-            let run_artifacts = cmd!(
+            prompts.info("Preparing artifacts");
+
+            cmd!(
                 "docker",
                 "exec",
                 "fake-ci-checkout",
@@ -195,22 +185,19 @@ impl ProcessesToExecute for Processes {
                 artifact_commands.join(";"),
             )
             .read()?;
-            println!(">  {}", run_artifacts);
         } else {
-            println!("no artifacts");
+            prompts.info("No artifacts to prepare");
         }
 
         let interpolated_image_name = interpolate(&job.image, &job.variables)?;
-
-        println!("cleaning up previous job");
 
         cmd!("docker", "ps", "-aq", "--filter", "name=fake-ci-job")
             .pipe(cmd!("xargs", "docker", "rm", "-f"))
             .read()?;
 
-        println!("running job  on {}", interpolated_image_name);
+        prompts.info("Running job");
 
-        let start_job = cmd!(
+        cmd!(
             "docker",
             "run",
             "--tty",
@@ -223,17 +210,14 @@ impl ProcessesToExecute for Processes {
         )
         .read()?;
 
-        println!("> {}", start_job);
-
         let variables = concatenate_variables(&job.variables);
 
         let full_script = format!("set -x\ncd /job; {} {}", variables, job.script.join(";"));
 
-        let run_job = cmd!("docker", "exec", "fake-ci-job", "sh", "-c", full_script).read()?;
-        println!("> {}", run_job);
+        cmd!("docker", "exec", "fake-ci-job", "sh", "-c", full_script).read()?;
 
         if !job.artifacts.is_empty() {
-            println!("extracting artifacts");
+            prompts.info("Extracting artifacts");
 
             let mut artifact_commands = vec![format!("mkdir -p \"/artifacts/{}\"", job_name)];
 
@@ -244,9 +228,7 @@ impl ProcessesToExecute for Processes {
                 ));
             }
 
-            println!("copying {}", artifact_commands.join(";"));
-
-            let run_artifacts = cmd!(
+            cmd!(
                 "docker",
                 "exec",
                 "fake-ci-job",
@@ -255,10 +237,8 @@ impl ProcessesToExecute for Processes {
                 artifact_commands.join(";")
             )
             .read()?;
-
-            println!("> {}", run_artifacts);
         } else {
-            println!("no artifacts to be extracted");
+            prompts.info("No artifacts to be extracted");
         }
 
         Ok(())
@@ -293,7 +273,7 @@ pub mod tests {
 
         fn run_job<P: Prompts>(
             &mut self,
-            _prompt: &P,
+            _prompts: &mut P,
             _context: &Context,
             _job_name: &str,
             _job: &Job,
@@ -305,7 +285,7 @@ pub mod tests {
 
         fn extract_artifacts<P: Prompts>(
             &mut self,
-            _prompt: &P,
+            _prompts: &P,
             _job: &Job,
         ) -> Result<(), std::io::Error> {
             self.extract_artifacts_call_count += 1;
