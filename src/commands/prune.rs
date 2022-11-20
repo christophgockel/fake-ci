@@ -7,18 +7,18 @@ use clap::Args;
 pub struct Prune;
 
 pub fn command<PROMPTS: Prompts, PROCESSES: ProcessesToExecute>(
-    prompts: &mut PROMPTS,
+    prompt: &mut PROMPTS,
     processes: &mut PROCESSES,
 ) -> Result<(), CommandError> {
-    if let PromptResponse::Yes = prompts.question("Do you really want to prune all artifacts?") {
+    if let PromptResponse::Yes = prompt.question("Do you really want to prune all artifacts?") {
         let container_count = processes.prune_containers()?;
-        prompts.info(&format!("Pruned {} containers", container_count));
+        prompt.info(&format!("Pruned {} containers", container_count));
 
         let image_count = processes.prune_images()?;
-        prompts.info(&format!("Pruned {} images", image_count));
+        prompt.info(&format!("Pruned {} images", image_count));
 
         let volume_count = processes.prune_volumes()?;
-        prompts.info(&format!("Pruned {} volumes", volume_count));
+        prompt.info(&format!("Pruned {} volumes", volume_count));
     }
 
     Ok(())

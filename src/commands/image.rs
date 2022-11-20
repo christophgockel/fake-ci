@@ -12,16 +12,16 @@ pub struct Image {
 }
 
 pub fn command<PROMPTS: Prompts, PROCESSES: ProcessesToExecute>(
-    prompts: &mut PROMPTS,
+    prompt: &mut PROMPTS,
     processes: &mut PROCESSES,
     context: &Context,
     args: &Image,
 ) -> Result<(), CommandError> {
     if args.force || processes.image_needs_to_be_built(&context.image_tag)? {
-        prompts.info("Building Fake CI image");
+        prompt.info("Building Fake CI image");
         processes.build_image(&context.image_tag)?;
     } else {
-        prompts.info("Image is up-to-date");
+        prompt.info("Image is up-to-date");
     }
 
     Ok(())

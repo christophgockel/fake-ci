@@ -11,8 +11,8 @@ pub struct Run {
     pub job: String,
 }
 
-pub fn command<PROMPT: Prompts, PROCESSES: ProcessesToExecute>(
-    prompt: &mut PROMPT,
+pub fn command<PROMPTS: Prompts, PROCESSES: ProcessesToExecute>(
+    prompt: &mut PROMPTS,
     processes: &mut PROCESSES,
     context: &Context,
     definition: &CiDefinition,
