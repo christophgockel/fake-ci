@@ -35,44 +35,7 @@ subcommand_help() {
 
 subcommand_run() {
   job_name=${1:-}
-  available_jobs_list=$(yq 'keys' <("$fake_ci_binary") | grep --invert-match -E "stages")
-  available_jobs_csv=",$(echo "$available_jobs_list" | yq 'to_csv'),"
-
-  if [ -z "$job_name" ] || [ "$job_name" = "-h" ] || [ "$job_name" = "--help" ]
-  then
-    echo "Available jobs:"
-    echo "$available_jobs_list"
-    echo
-    echo "Usage:"
-    echo "    ${script_name} run <job-name>"
-    exit 0
-  fi
-
-  if ! echo "$available_jobs_csv" | grep -e ",${job_name}," 1> /dev/null
-  then
-    echo "Job '${job_name}' not found."
-    echo
-    echo "Available jobs:"
-    echo "$available_jobs_list"
-    exit 1
-  fi
-
-  fake_ci_image_id=$(docker image ls --filter reference=fake-ci:latest --quiet)
-
-  if [ -z "$fake_ci_image_id" ]
-  then
-    echo "Fake CI image not found. Building now."
-    cat "$fake_ci_directory/Dockerfile" | docker build -t fake-ci:latest -
-  fi
-
-  echo "Checking out Code"
-  "$fake_ci_directory"/checkout-container.sh
-
-  echo "Preparing Code"
-  "$fake_ci_directory"/preparation-container.sh "$job_name"
-
-  echo "Running Job"
-  "$fake_ci_directory"/job-container.sh "$job_name"
+  "${fake_ci_binary}" run $job_name
 }
 
 subcommand_prune() {
