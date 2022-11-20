@@ -37,7 +37,7 @@ async fn main() -> Result<(), anyhow::Error> {
         let mut processes = Processes::default();
 
         match command {
-            Command::Image(_) => Ok(image::command(&context)?),
+            Command::Image(_) => Ok(image::command(&mut prompt, &mut processes, &context)?),
             Command::Prune(_) => Ok(prune::command(&mut prompt, &mut processes)?),
             Command::Run(run) => {
                 let definition = read_ci_definition(arguments.file_path).await?;

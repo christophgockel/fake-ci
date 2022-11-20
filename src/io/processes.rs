@@ -1,6 +1,6 @@
 use crate::core::Job;
 #[cfg(not(test))]
-use crate::io::docker::{build_image, image_needs_to_be_built};
+use crate::io::docker;
 use crate::io::prompt::Prompts;
 #[cfg(not(test))]
 use crate::io::variables::{concatenate_variables, interpolate};
@@ -11,6 +11,9 @@ use duct::cmd;
 use std::io::Error;
 
 pub trait ProcessesToExecute {
+    fn image_needs_to_be_built(&mut self, tag: &str) -> Result<bool, std::io::Error>;
+    fn build_image(&mut self, tag: &str) -> Result<(), std::io::Error>;
+
     fn prune_containers(&mut self) -> Result<usize, std::io::Error>;
     fn prune_volumes(&mut self) -> Result<usize, std::io::Error>;
     fn prune_images(&mut self) -> Result<usize, std::io::Error>;
@@ -37,6 +40,14 @@ pub use tests::ProcessesSpy as Processes;
 
 #[cfg(not(test))]
 impl ProcessesToExecute for Processes {
+    fn image_needs_to_be_built(&mut self, tag: &str) -> Result<bool, std::io::Error> {
+        docker::image_needs_to_be_built(tag)
+    }
+
+    fn build_image(&mut self, tag: &str) -> Result<(), std::io::Error> {
+        docker::build_image(tag)
+    }
+
     fn prune_containers(&mut self) -> Result<usize, Error> {
         let container_output = cmd!(
             "docker",
@@ -91,9 +102,9 @@ impl ProcessesToExecute for Processes {
         job_name: &str,
         job: &Job,
     ) -> Result<(), std::io::Error> {
-        if image_needs_to_be_built(&context.image_tag)? {
+        if docker::image_needs_to_be_built(&context.image_tag)? {
             prompts.info("Building Fake CI image first");
-            build_image(&context.image_tag)?;
+            docker::build_image(&context.image_tag)?;
         }
 
         let checkout_commands_to_run = format!(
@@ -264,6 +275,8 @@ pub mod tests {
 
     #[derive(Default)]
     pub struct ProcessesSpy {
+        pub image_needs_to_be_built: bool,
+        pub build_image_call_count: usize,
         pub prune_containers_call_count: usize,
         pub prune_volumes_call_count: usize,
         pub prune_images_call_count: usize,
@@ -271,21 +284,40 @@ pub mod tests {
         pub extract_artifacts_call_count: usize,
     }
 
+    impl ProcessesSpy {
+        pub fn with_image_to_be_built() -> Self {
+            Self {
+                image_needs_to_be_built: true,
+                ..Default::default()
+            }
+        }
+    }
+
     impl ProcessesToExecute for ProcessesSpy {
+        fn image_needs_to_be_built(&mut self, _tag: &str) -> Result<bool, std::io::Error> {
+            Ok(self.image_needs_to_be_built)
+        }
+
+        fn build_image(&mut self, _tag: &str) -> Result<(), std::io::Error> {
+            self.build_image_call_count += 1;
+
+            Ok(())
+        }
+
         fn prune_containers(&mut self) -> Result<usize, std::io::Error> {
             self.prune_containers_call_count += 1;
 
             Ok(1)
         }
 
-        fn prune_images(&mut self) -> Result<usize, std::io::Error> {
-            self.prune_images_call_count += 1;
+        fn prune_volumes(&mut self) -> Result<usize, std::io::Error> {
+            self.prune_volumes_call_count += 1;
 
             Ok(1)
         }
 
-        fn prune_volumes(&mut self) -> Result<usize, std::io::Error> {
-            self.prune_volumes_call_count += 1;
+        fn prune_images(&mut self) -> Result<usize, std::io::Error> {
+            self.prune_images_call_count += 1;
 
             Ok(1)
         }
