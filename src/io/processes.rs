@@ -40,59 +40,24 @@ pub use tests::ProcessesSpy as Processes;
 
 #[cfg(not(test))]
 impl ProcessesToExecute for Processes {
-    fn image_needs_to_be_built(&mut self, tag: &str) -> Result<bool, std::io::Error> {
+    fn image_needs_to_be_built(&mut self, tag: &str) -> Result<bool, Error> {
         docker::image_needs_to_be_built(tag)
     }
 
-    fn build_image(&mut self, tag: &str) -> Result<(), std::io::Error> {
+    fn build_image(&mut self, tag: &str) -> Result<(), Error> {
         docker::build_image(tag)
     }
 
     fn prune_containers(&mut self) -> Result<usize, Error> {
-        let container_output = cmd!(
-            "docker",
-            "container",
-            "ls",
-            "--filter",
-            "name=fake-ci",
-            "--quiet"
-        )
-        .pipe(cmd!("xargs", "docker", "container", "rm", "-f"))
-        .read()?;
-
-        let container_lines = container_output
-            .split('\n')
-            .filter(|s| !s.is_empty())
-            .count();
-
-        Ok(container_lines)
+        docker::prune_containers()
     }
 
     fn prune_volumes(&mut self) -> Result<usize, Error> {
-        let volume_output = cmd!("docker", "volume", "ls", "--filter", "name=fake", "--quiet")
-            .pipe(cmd!("xargs", "docker", "volume", "rm", "-f"))
-            .read()?;
-
-        let volume_lines = volume_output.split('\n').filter(|s| !s.is_empty()).count();
-
-        Ok(volume_lines)
+        docker::prune_volumes()
     }
 
     fn prune_images(&mut self) -> Result<usize, Error> {
-        let image_output = cmd!(
-            "docker",
-            "image",
-            "ls",
-            "--filter",
-            "reference=fake-ci",
-            "--quiet"
-        )
-        .pipe(cmd!("xargs", "docker", "image", "rm", "-f"))
-        .read()?;
-
-        let image_lines = image_output.split('\n').filter(|s| !s.is_empty()).count();
-
-        Ok(image_lines)
+        docker::prune_images()
     }
 
     fn run_job<P: Prompts>(

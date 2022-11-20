@@ -1,16 +1,9 @@
 use duct::cmd;
+use std::io::Error;
 
 const DOCKERFILE_CONTENT: &str = include_str!("../../Dockerfile");
 
-pub fn build_image(tag: &str) -> Result<(), std::io::Error> {
-    cmd!("echo", DOCKERFILE_CONTENT)
-        .pipe(cmd!("docker", "build", "-t", tag, "-"))
-        .run()?;
-
-    Ok(())
-}
-
-pub fn image_needs_to_be_built(tag: &str) -> Result<bool, std::io::Error> {
+pub fn image_needs_to_be_built(tag: &str) -> Result<bool, Error> {
     let tag_id = cmd!(
         "docker",
         "image",
@@ -22,6 +15,64 @@ pub fn image_needs_to_be_built(tag: &str) -> Result<bool, std::io::Error> {
     .read()?;
 
     Ok(tag_id.is_empty())
+}
+
+pub fn build_image(tag: &str) -> Result<(), Error> {
+    cmd!("echo", DOCKERFILE_CONTENT)
+        .pipe(cmd!("docker", "build", "-t", tag, "-"))
+        .run()?;
+
+    Ok(())
+}
+
+#[allow(dead_code)]
+pub fn prune_containers() -> Result<usize, Error> {
+    let container_output = cmd!(
+        "docker",
+        "container",
+        "ls",
+        "--filter",
+        "name=fake-ci",
+        "--quiet"
+    )
+    .pipe(cmd!("xargs", "docker", "container", "rm", "-f"))
+    .read()?;
+
+    let container_lines = container_output
+        .split('\n')
+        .filter(|s| !s.is_empty())
+        .count();
+
+    Ok(container_lines)
+}
+
+#[allow(dead_code)]
+pub fn prune_volumes() -> Result<usize, Error> {
+    let volume_output = cmd!("docker", "volume", "ls", "--filter", "name=fake", "--quiet")
+        .pipe(cmd!("xargs", "docker", "volume", "rm", "-f"))
+        .read()?;
+
+    let volume_lines = volume_output.split('\n').filter(|s| !s.is_empty()).count();
+
+    Ok(volume_lines)
+}
+
+#[allow(dead_code)]
+pub fn prune_images() -> Result<usize, Error> {
+    let image_output = cmd!(
+        "docker",
+        "image",
+        "ls",
+        "--filter",
+        "reference=fake-ci",
+        "--quiet"
+    )
+    .pipe(cmd!("xargs", "docker", "image", "rm", "-f"))
+    .read()?;
+
+    let image_lines = image_output.split('\n').filter(|s| !s.is_empty()).count();
+
+    Ok(image_lines)
 }
 
 #[cfg(test)]
