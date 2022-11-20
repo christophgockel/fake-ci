@@ -23,13 +23,33 @@ pub fn command<PROMPT: Prompts, PROCESSES: ProcessesToExecute>(
             prompt.info("Building Fake CI image first");
             processes.build_image(&context.image_tag)?;
         }
+        prompt.info("Checking out code");
 
-        processes
-            .run_job(prompt, context, &job_name, job)
-            .map_err(CommandError::execution)?;
-        processes
-            .extract_artifacts(prompt, job)
-            .map_err(CommandError::execution)?;
+        processes.prune_checkout_container()?;
+        let checkout_container_id = processes.start_checkout_container(context)?;
+
+        processes.checkout_code(&checkout_container_id, context)?;
+
+        if !job.required_artifacts.is_empty() {
+            prompt.info("Preparing artifacts");
+
+            processes.prepare_artifacts(&checkout_container_id, &job.required_artifacts)?;
+        } else {
+            prompt.info("No artifacts to prepare");
+        }
+
+        prompt.info("Running job");
+
+        processes.prune_job_container()?;
+        let job_container_id = processes.start_job_container(job, &checkout_container_id)?;
+        processes.run_job(&job_container_id, job)?;
+
+        if !job.artifacts.is_empty() {
+            prompt.info("Extracting artifacts");
+            processes.extract_artifacts(&job_container_id, &job_name, job)?;
+        } else {
+            prompt.info("No artifacts to be extracted");
+        }
 
         Ok(())
     } else {
@@ -83,7 +103,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(processes.build_image_call_count, 1);
-        assert_eq!(prompt.info_call_count, 1);
+        assert!(prompt.info_call_count > 0);
     }
 
     #[test]
@@ -105,15 +125,49 @@ mod tests {
         )
         .unwrap();
 
+        assert_eq!(processes.prune_checkout_container_call_count, 1);
+        assert_eq!(processes.start_checkout_container_call_count, 1);
+        assert_eq!(processes.checkout_code_call_count, 1);
+        assert_eq!(processes.prepare_artifacts_call_count, 0);
+        assert_eq!(processes.prune_job_container_call_count, 1);
         assert_eq!(processes.run_job_call_count, 1);
+        assert_eq!(processes.extract_artifacts_call_count, 0);
     }
 
     #[test]
-    fn extracts_artifacts() {
+    fn prepares_artifacts_when_job_requires_them() {
         let mut prompt = FakePrompt::always_confirming();
         let mut processes = ProcessesSpy::default();
         let context = Context::default();
-        let job = Job::default();
+        let job = Job {
+            required_artifacts: HashMap::from([("other-job".into(), vec!["file-1".into()])]),
+            ..Default::default()
+        };
+        let definition = CiDefinition {
+            jobs: HashMap::from([("job".into(), job)]),
+        };
+
+        command(
+            &mut prompt,
+            &mut processes,
+            &context,
+            &definition,
+            "job".into(),
+        )
+        .unwrap();
+
+        assert_eq!(processes.prepare_artifacts_call_count, 1);
+    }
+
+    #[test]
+    fn extracts_artifacts_when_job_defines_some() {
+        let mut prompt = FakePrompt::always_confirming();
+        let mut processes = ProcessesSpy::default();
+        let context = Context::default();
+        let job = Job {
+            artifacts: vec!["file-1".into()],
+            ..Default::default()
+        };
         let definition = CiDefinition {
             jobs: HashMap::from([("job".into(), job)]),
         };

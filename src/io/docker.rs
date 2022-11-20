@@ -75,6 +75,79 @@ pub fn prune_images() -> Result<usize, Error> {
     Ok(image_lines)
 }
 
+#[allow(dead_code)]
+pub fn prune_container(container_name: &str) -> Result<(), Error> {
+    cmd!(
+        "docker",
+        "ps",
+        "--all",
+        "--quiet",
+        "--filter",
+        format!("name={}", container_name),
+    )
+    .pipe(cmd!("xargs", "docker", "rm", "--force"))
+    .read()?;
+
+    Ok(())
+}
+
+#[allow(dead_code)]
+pub fn start_checkout_container(
+    container_name: &str,
+    image_tag: &str,
+    project_directory: &str,
+) -> Result<String, Error> {
+    let container_id = cmd!(
+        "docker",
+        "run",
+        "--tty",
+        "--detach",
+        "--volume",
+        format!("{}:/project", project_directory),
+        "--volume",
+        "/checkout",
+        "--volume",
+        "fake-ci-artifacts:/artifacts",
+        "--volume",
+        "/job",
+        "--name",
+        container_name,
+        image_tag
+    )
+    .read()?;
+
+    Ok(container_id)
+}
+
+#[allow(dead_code)]
+pub fn execute_commands(container_id: &str, commands: &str) -> Result<(), Error> {
+    cmd!("docker", "exec", container_id, "sh", "-c", commands).run()?;
+
+    Ok(())
+}
+
+#[allow(dead_code)]
+pub fn start_job_container(
+    container_name: &str,
+    image_tag: &str,
+    source_container_id: &str,
+) -> Result<String, Error> {
+    let container_id = cmd!(
+        "docker",
+        "run",
+        "--tty",
+        "--detach",
+        "--volumes-from",
+        source_container_id,
+        "--name",
+        container_name,
+        image_tag
+    )
+    .read()?;
+
+    Ok(container_id)
+}
+
 #[cfg(test)]
 pub mod tests {
     use super::*;

@@ -1,12 +1,10 @@
 use crate::core::Job;
 #[cfg(not(test))]
 use crate::io::docker;
-use crate::io::prompt::Prompts;
 #[cfg(not(test))]
 use crate::io::variables::{concatenate_variables, interpolate};
 use crate::Context;
-#[cfg(not(test))]
-use duct::cmd;
+use std::collections::HashMap;
 #[cfg(not(test))]
 use std::io::Error;
 
@@ -18,16 +16,32 @@ pub trait ProcessesToExecute {
     fn prune_volumes(&mut self) -> Result<usize, std::io::Error>;
     fn prune_images(&mut self) -> Result<usize, std::io::Error>;
 
-    fn run_job<P: Prompts>(
+    fn prune_checkout_container(&mut self) -> Result<(), std::io::Error>;
+    fn start_checkout_container(&mut self, context: &Context) -> Result<String, std::io::Error>;
+    fn checkout_code(
         &mut self,
-        prompts: &mut P,
+        container_id: &str,
         context: &Context,
-        job_name: &str,
-        job: &Job,
     ) -> Result<(), std::io::Error>;
-    fn extract_artifacts<P: Prompts>(
+
+    fn prepare_artifacts(
         &mut self,
-        prompts: &P,
+        container_id: &str,
+        artifacts: &HashMap<String, Vec<String>>,
+    ) -> Result<(), std::io::Error>;
+
+    fn prune_job_container(&mut self) -> Result<(), std::io::Error>;
+    fn start_job_container(
+        &mut self,
+        job: &Job,
+        source_container_id: &str,
+    ) -> Result<String, std::io::Error>;
+    fn run_job(&mut self, container_id: &str, job: &Job) -> Result<(), std::io::Error>;
+
+    fn extract_artifacts(
+        &mut self,
+        container_id: &str,
+        job_name: &str,
         job: &Job,
     ) -> Result<(), std::io::Error>;
 }
@@ -60,14 +74,24 @@ impl ProcessesToExecute for Processes {
         docker::prune_images()
     }
 
-    fn run_job<P: Prompts>(
+    fn prune_checkout_container(&mut self) -> Result<(), Error> {
+        docker::prune_container("fake-ci-checkout")
+    }
+
+    fn start_checkout_container(&mut self, context: &Context) -> Result<String, Error> {
+        docker::start_checkout_container(
+            "fake-ci-checkout",
+            &context.image_tag,
+            &context.current_directory,
+        )
+    }
+
+    fn checkout_code(
         &mut self,
-        prompts: &mut P,
+        container_id: &str,
         context: &Context,
-        job_name: &str,
-        job: &Job,
     ) -> Result<(), std::io::Error> {
-        let checkout_commands_to_run = format!(
+        let checkout_commands = format!(
             "
               cd /checkout;
               git init;
@@ -79,153 +103,75 @@ impl ProcessesToExecute for Processes {
             ",
             context.git_sha,
         );
+        docker::execute_commands(container_id, &checkout_commands)?;
 
-        cmd!(
-            "docker",
-            "ps",
-            "--all",
-            "--quiet",
-            "--filter",
-            "name=fake-ci-checkout"
-        )
-        .pipe(cmd!("xargs", "docker", "rm", "--force"))
-        .read()?;
-
-        cmd!(
-            "docker",
-            "run",
-            "--tty",
-            "--detach",
-            "--volume",
-            format!("{}:/project", context.current_directory),
-            "--volume",
-            "/checkout",
-            "--volume",
-            "fake-ci-artifacts:/artifacts",
-            "--volume",
-            "/job",
-            "--name",
-            "fake-ci-checkout",
-            &context.image_tag
-        )
-        .read()?;
-
-        prompts.info("Checking out code");
-
-        cmd!(
-            "docker",
-            "exec",
-            "fake-ci-checkout",
-            "sh",
-            "-c",
-            checkout_commands_to_run
-        )
-        .run()?;
-
-        let prepare_commands_to_run = "
+        let other_preparation_commands = "
           cp -Rp /checkout/. /job;
           chmod 0777 /job;
           chmod 0777 /artifacts;
         ";
-
-        cmd!(
-            "docker",
-            "exec",
-            "fake-ci-checkout",
-            "sh",
-            "-c",
-            prepare_commands_to_run,
-        )
-        .read()?;
-
-        let mut artifact_commands = vec![];
-
-        for (dependant_job_name, files) in &job.required_artifacts {
-            for file in files {
-                artifact_commands.push(format!(
-                    "cp -Rp \"/artifacts/{}/{}\" /job;",
-                    dependant_job_name, file
-                ));
-            }
-        }
-
-        if !artifact_commands.is_empty() {
-            prompts.info("Preparing artifacts");
-
-            cmd!(
-                "docker",
-                "exec",
-                "fake-ci-checkout",
-                "sh",
-                "-c",
-                artifact_commands.join(";"),
-            )
-            .read()?;
-        } else {
-            prompts.info("No artifacts to prepare");
-        }
-
-        let interpolated_image_name = interpolate(&job.image, &job.variables)?;
-
-        cmd!("docker", "ps", "-aq", "--filter", "name=fake-ci-job")
-            .pipe(cmd!("xargs", "docker", "rm", "-f"))
-            .read()?;
-
-        prompts.info("Running job");
-
-        cmd!(
-            "docker",
-            "run",
-            "--tty",
-            "--detach",
-            "--volumes-from",
-            "fake-ci-checkout",
-            "--name",
-            "fake-ci-job",
-            interpolated_image_name
-        )
-        .read()?;
-
-        let variables = concatenate_variables(&job.variables);
-
-        let full_script = format!("set -x\ncd /job; {} {}", variables, job.script.join(";"));
-
-        cmd!("docker", "exec", "fake-ci-job", "sh", "-c", full_script).read()?;
-
-        if !job.artifacts.is_empty() {
-            prompts.info("Extracting artifacts");
-
-            let mut artifact_commands = vec![format!("mkdir -p \"/artifacts/{}\"", job_name)];
-
-            for artifact in &job.artifacts {
-                artifact_commands.push(format!(
-                    "cp -R /job/{} \"/artifacts/{}/\"",
-                    artifact, job_name
-                ));
-            }
-
-            cmd!(
-                "docker",
-                "exec",
-                "fake-ci-job",
-                "sh",
-                "-c",
-                artifact_commands.join(";")
-            )
-            .read()?;
-        } else {
-            prompts.info("No artifacts to be extracted");
-        }
+        docker::execute_commands(container_id, other_preparation_commands)?;
 
         Ok(())
     }
 
-    fn extract_artifacts<P: Prompts>(
+    fn prepare_artifacts(
         &mut self,
-        _prompt: &P,
-        _job: &Job,
+        container_id: &str,
+        artifacts: &HashMap<String, Vec<String>>,
     ) -> Result<(), std::io::Error> {
+        let mut artifact_commands = vec![];
+
+        for (job_name, files) in artifacts {
+            for file in files {
+                artifact_commands
+                    .push(format!("cp -Rp \"/artifacts/{}/{}\" /job;", job_name, file));
+            }
+        }
+
+        docker::execute_commands(container_id, &artifact_commands.join(";"))?;
+
         Ok(())
+    }
+
+    fn prune_job_container(&mut self) -> Result<(), std::io::Error> {
+        docker::prune_container("fake-ci-job")
+    }
+
+    fn start_job_container(
+        &mut self,
+        job: &Job,
+        source_container_id: &str,
+    ) -> Result<String, std::io::Error> {
+        let interpolated_image_name = interpolate(&job.image, &job.variables)?;
+
+        docker::start_job_container("fake-ci-job", &interpolated_image_name, source_container_id)
+    }
+
+    fn run_job(&mut self, container_id: &str, job: &Job) -> Result<(), std::io::Error> {
+        let variables = concatenate_variables(&job.variables);
+
+        let full_script = format!("set -x\ncd /job; {} {}", variables, job.script.join(";"));
+
+        docker::execute_commands(container_id, &full_script)
+    }
+
+    fn extract_artifacts(
+        &mut self,
+        job_container_id: &str,
+        job_name: &str,
+        job: &Job,
+    ) -> Result<(), std::io::Error> {
+        let mut artifact_commands = vec![format!("mkdir -p \"/artifacts/{}\"", job_name)];
+
+        for artifact in &job.artifacts {
+            artifact_commands.push(format!(
+                "cp -R /job/{} \"/artifacts/{}/\"",
+                artifact, job_name
+            ));
+        }
+
+        docker::execute_commands(job_container_id, &artifact_commands.join(";"))
     }
 }
 
@@ -240,6 +186,12 @@ pub mod tests {
         pub prune_containers_call_count: usize,
         pub prune_volumes_call_count: usize,
         pub prune_images_call_count: usize,
+        pub prune_checkout_container_call_count: usize,
+        pub start_checkout_container_call_count: usize,
+        pub checkout_code_call_count: usize,
+        pub prepare_artifacts_call_count: usize,
+        pub prune_job_container_call_count: usize,
+        pub start_job_container_call_count: usize,
         pub run_job_call_count: usize,
         pub extract_artifacts_call_count: usize,
     }
@@ -282,21 +234,67 @@ pub mod tests {
             Ok(1)
         }
 
-        fn run_job<P: Prompts>(
+        fn prune_checkout_container(&mut self) -> Result<(), std::io::Error> {
+            self.prune_checkout_container_call_count += 1;
+
+            Ok(())
+        }
+
+        fn start_checkout_container(
             &mut self,
-            _prompts: &mut P,
             _context: &Context,
-            _job_name: &str,
-            _job: &Job,
+        ) -> Result<String, std::io::Error> {
+            self.start_checkout_container_call_count += 1;
+
+            Ok("container-id".into())
+        }
+
+        fn checkout_code(
+            &mut self,
+            _container_id: &str,
+            _context: &Context,
         ) -> Result<(), std::io::Error> {
+            self.checkout_code_call_count += 1;
+
+            Ok(())
+        }
+
+        fn prepare_artifacts(
+            &mut self,
+            _container_id: &str,
+            _artifacts: &HashMap<String, Vec<String>>,
+        ) -> Result<(), std::io::Error> {
+            self.prepare_artifacts_call_count += 1;
+
+            Ok(())
+        }
+
+        fn prune_job_container(&mut self) -> Result<(), std::io::Error> {
+            self.prune_job_container_call_count += 1;
+
+            Ok(())
+        }
+
+        fn start_job_container(
+            &mut self,
+            _job: &Job,
+            _source_container_id: &str,
+        ) -> Result<String, std::io::Error> {
+            self.start_job_container_call_count += 1;
+
+            Ok("container-id".into())
+        }
+
+        fn run_job(&mut self, _container_id: &str, _job: &Job) -> Result<(), std::io::Error> {
             self.run_job_call_count += 1;
 
             Ok(())
         }
 
-        fn extract_artifacts<P: Prompts>(
+        fn extract_artifacts(
             &mut self,
-            _prompts: &P,
+            _container_id: &str,
+            _job_name: &str,
             _job: &Job,
         ) -> Result<(), std::io::Error> {
             self.extract_artifacts_call_count += 1;
