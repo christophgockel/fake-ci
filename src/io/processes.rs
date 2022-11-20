@@ -2,6 +2,8 @@ use crate::core::Job;
 #[cfg(not(test))]
 use crate::io::docker;
 #[cfg(not(test))]
+use crate::io::shell::combine_lines;
+#[cfg(not(test))]
 use crate::io::variables::{concatenate_variables, interpolate};
 use crate::Context;
 use std::collections::HashMap;
@@ -150,8 +152,8 @@ impl ProcessesToExecute for Processes {
 
     fn run_job(&mut self, container_id: &str, job: &Job) -> Result<(), std::io::Error> {
         let variables = concatenate_variables(&job.variables);
-
-        let full_script = format!("set -x\ncd /job; {} {}", variables, job.script.join(";"));
+        let script_commands = combine_lines(&job.script);
+        let full_script = format!("cd /job; {} {}", variables, &script_commands);
 
         docker::execute_commands(container_id, &full_script)
     }
