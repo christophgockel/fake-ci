@@ -19,6 +19,11 @@ pub fn command<PROMPT: Prompts, PROCESSES: ProcessesToExecute>(
     job_name: String,
 ) -> Result<(), CommandError> {
     if let Some(job) = definition.jobs.get(&job_name) {
+        if processes.image_needs_to_be_built(&context.image_tag)? {
+            prompt.info("Building Fake CI image first");
+            processes.build_image(&context.image_tag)?;
+        }
+
         processes
             .run_job(prompt, context, &job_name, job)
             .map_err(CommandError::execution)?;
@@ -37,7 +42,7 @@ mod tests {
     use super::*;
     use crate::core::{CiDefinition, Job};
     use crate::io::processes::tests::ProcessesSpy;
-    use crate::io::prompt::tests::FakePrompt;
+    use crate::io::prompt::tests::{FakePrompt, SpyPrompt};
     use std::collections::HashMap;
 
     #[test]
@@ -56,6 +61,29 @@ mod tests {
         );
 
         assert!(matches!(result.err().unwrap(), CommandError::UnknownJob(_)));
+    }
+
+    #[test]
+    fn checks_if_image_is_available_and_builds_when_it_is_not() {
+        let mut prompt = SpyPrompt::default();
+        let mut processes = ProcessesSpy::with_image_to_be_built();
+        let context = Context::default();
+        let job = Job::default();
+        let definition = CiDefinition {
+            jobs: HashMap::from([("job".into(), job)]),
+        };
+
+        command(
+            &mut prompt,
+            &mut processes,
+            &context,
+            &definition,
+            "job".into(),
+        )
+        .unwrap();
+
+        assert_eq!(processes.build_image_call_count, 1);
+        assert_eq!(prompt.info_call_count, 1);
     }
 
     #[test]

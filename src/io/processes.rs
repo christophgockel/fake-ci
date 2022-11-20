@@ -67,11 +67,6 @@ impl ProcessesToExecute for Processes {
         job_name: &str,
         job: &Job,
     ) -> Result<(), std::io::Error> {
-        if docker::image_needs_to_be_built(&context.image_tag)? {
-            prompts.info("Building Fake CI image first");
-            docker::build_image(&context.image_tag)?;
-        }
-
         let checkout_commands_to_run = format!(
             "
               cd /checkout;
