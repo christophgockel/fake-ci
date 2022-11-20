@@ -50,6 +50,11 @@ pub mod tests {
         pub response: PromptResponse,
     }
 
+    #[derive(Default)]
+    pub struct SpyPrompt {
+        pub info_call_count: u32,
+    }
+
     impl Default for FakePrompt {
         fn default() -> Self {
             Self {
@@ -82,5 +87,15 @@ pub mod tests {
         }
 
         fn info(&mut self, _message: &str) {}
+    }
+
+    impl Prompts for SpyPrompt {
+        fn question(&mut self, _question: &str) -> PromptResponse {
+            PromptResponse::Yes
+        }
+
+        fn info(&mut self, _message: &str) {
+            self.info_call_count += 1;
+        }
     }
 }

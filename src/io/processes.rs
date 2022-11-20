@@ -11,7 +11,10 @@ use duct::cmd;
 use std::io::Error;
 
 pub trait ProcessesToExecute {
-    fn docker_prune<P: Prompts>(&mut self, prompts: &mut P) -> Result<(), std::io::Error>;
+    fn prune_containers(&mut self) -> Result<usize, std::io::Error>;
+    fn prune_volumes(&mut self) -> Result<usize, std::io::Error>;
+    fn prune_images(&mut self) -> Result<usize, std::io::Error>;
+
     fn run_job<P: Prompts>(
         &mut self,
         prompts: &mut P,
@@ -34,7 +37,7 @@ pub use tests::ProcessesSpy as Processes;
 
 #[cfg(not(test))]
 impl ProcessesToExecute for Processes {
-    fn docker_prune<P: Prompts>(&mut self, prompts: &mut P) -> Result<(), Error> {
+    fn prune_containers(&mut self) -> Result<usize, Error> {
         let container_output = cmd!(
             "docker",
             "container",
@@ -51,16 +54,20 @@ impl ProcessesToExecute for Processes {
             .filter(|s| !s.is_empty())
             .count();
 
-        prompts.info(&format!("Pruned {} containers", container_lines));
+        Ok(container_lines)
+    }
 
+    fn prune_volumes(&mut self) -> Result<usize, Error> {
         let volume_output = cmd!("docker", "volume", "ls", "--filter", "name=fake", "--quiet")
             .pipe(cmd!("xargs", "docker", "volume", "rm", "-f"))
             .read()?;
 
         let volume_lines = volume_output.split('\n').filter(|s| !s.is_empty()).count();
 
-        prompts.info(&format!("Pruned {} volumes", volume_lines));
+        Ok(volume_lines)
+    }
 
+    fn prune_images(&mut self) -> Result<usize, Error> {
         let image_output = cmd!(
             "docker",
             "image",
@@ -74,9 +81,7 @@ impl ProcessesToExecute for Processes {
 
         let image_lines = image_output.split('\n').filter(|s| !s.is_empty()).count();
 
-        prompts.info(&format!("Pruned {} images", image_lines));
-
-        Ok(())
+        Ok(image_lines)
     }
 
     fn run_job<P: Prompts>(
@@ -259,16 +264,30 @@ pub mod tests {
 
     #[derive(Default)]
     pub struct ProcessesSpy {
-        pub docker_prune_call_count: usize,
+        pub prune_containers_call_count: usize,
+        pub prune_volumes_call_count: usize,
+        pub prune_images_call_count: usize,
         pub run_job_call_count: usize,
         pub extract_artifacts_call_count: usize,
     }
 
     impl ProcessesToExecute for ProcessesSpy {
-        fn docker_prune<P: Prompts>(&mut self, _prompts: &mut P) -> Result<(), std::io::Error> {
-            self.docker_prune_call_count += 1;
+        fn prune_containers(&mut self) -> Result<usize, std::io::Error> {
+            self.prune_containers_call_count += 1;
 
-            Ok(())
+            Ok(1)
+        }
+
+        fn prune_images(&mut self) -> Result<usize, std::io::Error> {
+            self.prune_images_call_count += 1;
+
+            Ok(1)
+        }
+
+        fn prune_volumes(&mut self) -> Result<usize, std::io::Error> {
+            self.prune_volumes_call_count += 1;
+
+            Ok(1)
         }
 
         fn run_job<P: Prompts>(
