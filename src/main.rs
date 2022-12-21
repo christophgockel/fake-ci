@@ -12,7 +12,7 @@ use crate::error::FakeCiError;
 use crate::file::{FileAccess, FileAccessError};
 use crate::git::read_details;
 use crate::gitlab::configuration::GitLabConfiguration;
-use crate::gitlab::{merge_all, parse, parse_all};
+use crate::gitlab::{merge_all, parse_all, read_configuration};
 use crate::io::processes::Processes;
 use crate::io::prompt::Prompt;
 use anyhow::anyhow;
@@ -100,7 +100,7 @@ async fn read_gitlab_configuration(
         .map_err(|e| FileAccessError::cannot_read(&path_to_config_file, e))?;
     let git_details = read_details()?;
 
-    let mut configuration = parse(file)?;
+    let mut configuration = read_configuration(file)?;
     let additional_configurations =
         parse_all(&configuration.include, &file_access, &git_details).await?;
     merge_all(additional_configurations, &mut configuration)?;

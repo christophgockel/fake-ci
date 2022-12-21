@@ -2,6 +2,7 @@ pub mod configuration;
 mod deserialise;
 pub mod error;
 mod merge;
+pub mod variables;
 
 use crate::file::FileAccess;
 use crate::git::GitDetails;
@@ -10,10 +11,24 @@ use crate::gitlab::error::GitLabError;
 use crate::gitlab::merge::{
     collect_template_names, merge_configuration, merge_image, merge_script, merge_variables,
 };
+use crate::gitlab::variables::predefined_variables;
 use async_recursion::async_recursion;
 use url::Url;
 
-pub fn parse<R>(reader: R) -> Result<GitLabConfiguration, GitLabError>
+pub fn read_configuration<R>(reader: R) -> Result<GitLabConfiguration, GitLabError>
+where
+    R: std::io::Read,
+{
+    let mut configuration = parse(reader)?;
+
+    for (key, value) in predefined_variables() {
+        configuration.variables.push((key, value));
+    }
+
+    Ok(configuration)
+}
+
+fn parse<R>(reader: R) -> Result<GitLabConfiguration, GitLabError>
 where
     R: std::io::Read,
 {
@@ -231,6 +246,22 @@ mod tests {
         let configuration = parse_and_merge(content).unwrap();
 
         assert_eq!(configuration.stages, vec!["test".to_string()]);
+    }
+
+    mod test_read_configuration {
+        use super::*;
+        use crate::io::docker::DIRECTORIES;
+
+        #[test]
+        fn adds_predefined_variables_to_global_variables() {
+            let empty_content = "";
+            let configuration = read_configuration(empty_content.as_bytes()).unwrap();
+
+            assert_eq!(
+                configuration.variables,
+                vec![("CI_PROJECT_DIR".into(), DIRECTORIES.job.to_owned())]
+            );
+        }
     }
 
     mod test_merge_precedence_of_variables {

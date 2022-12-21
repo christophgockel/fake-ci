@@ -3,6 +3,20 @@ use std::io::Error;
 
 const DOCKERFILE_CONTENT: &str = include_str!("../../Dockerfile");
 
+pub struct Directories {
+    pub checkout: &'static str,
+    pub project: &'static str,
+    pub job: &'static str,
+    pub artifacts: &'static str,
+}
+
+pub const DIRECTORIES: Directories = Directories {
+    checkout: "/checkout",
+    project: "/project",
+    job: "/job",
+    artifacts: "/artifacts",
+};
+
 pub fn image_needs_to_be_built(tag: &str) -> Result<bool, Error> {
     let tag_id = cmd!(
         "docker",
