@@ -2,6 +2,8 @@ use crate::core::Job;
 #[cfg(not(test))]
 use crate::io::docker;
 #[cfg(not(test))]
+use crate::io::docker::DIRECTORIES;
+#[cfg(not(test))]
 use crate::io::shell::combine_lines;
 #[cfg(not(test))]
 use crate::io::variables::{concatenate_variables, interpolate};
@@ -93,26 +95,33 @@ impl ProcessesToExecute for Processes {
         container_id: &str,
         context: &Context,
     ) -> Result<(), std::io::Error> {
+        let checkout_directory = DIRECTORIES.checkout;
+        let project_directory = DIRECTORIES.project;
+        let job_directory = DIRECTORIES.job;
+        let artifacts_directory = DIRECTORIES.artifacts;
+        let git_sha = &context.git_sha;
+
         let checkout_commands = format!(
             "
-              cd /checkout;
+              cd {checkout_directory};
               git init;
-              git remote add origin /project;
+              git remote add origin {project_directory};
               git fetch origin --quiet;
-              git checkout --quiet {};
-              (cd /project; git add --intent-to-add .; git diff) | git apply --allow-empty --quiet;
-              (cd /project; git reset --mixed)
-            ",
-            context.git_sha,
+              git checkout --quiet {git_sha};
+              (cd {project_directory}; git add --intent-to-add .; git diff) | git apply --allow-empty --quiet;
+              (cd {project_directory}; git reset --mixed)
+            "
         );
         docker::execute_commands(container_id, &checkout_commands)?;
 
-        let other_preparation_commands = "
-          cp -Rp /checkout/. /job;
-          chmod 0777 /job;
-          chmod 0777 /artifacts;
-        ";
-        docker::execute_commands(container_id, other_preparation_commands)?;
+        let other_preparation_commands = format!(
+            "
+              cp -Rp {checkout_directory}/. {job_directory};
+              chmod 0777 {job_directory};
+              chmod 0777 {artifacts_directory};
+            "
+        );
+        docker::execute_commands(container_id, &other_preparation_commands)?;
 
         Ok(())
     }
@@ -123,11 +132,14 @@ impl ProcessesToExecute for Processes {
         artifacts: &HashMap<String, Vec<String>>,
     ) -> Result<(), std::io::Error> {
         let mut artifact_commands = vec![];
+        let job_directory = DIRECTORIES.job;
+        let artifacts_directory = DIRECTORIES.artifacts;
 
         for (job_name, files) in artifacts {
             for file in files {
-                artifact_commands
-                    .push(format!("cp -Rp \"/artifacts/{}/{}\" /job;", job_name, file));
+                artifact_commands.push(format!(
+                    "cp -Rp \"{artifacts_directory}/{job_name}/{file}\" {job_directory};"
+                ));
             }
         }
 
@@ -153,7 +165,8 @@ impl ProcessesToExecute for Processes {
     fn run_job(&mut self, container_id: &str, job: &Job) -> Result<(), std::io::Error> {
         let variables = concatenate_variables(&job.variables);
         let script_commands = combine_lines(&job.script);
-        let full_script = format!("cd /job; {} {}", variables, &script_commands);
+        let job_directory = DIRECTORIES.job;
+        let full_script = format!("cd {job_directory}; {variables} {script_commands}");
 
         docker::execute_commands(container_id, &full_script)
     }
@@ -164,12 +177,13 @@ impl ProcessesToExecute for Processes {
         job_name: &str,
         job: &Job,
     ) -> Result<(), std::io::Error> {
-        let mut artifact_commands = vec![format!("mkdir -p \"/artifacts/{}\"", job_name)];
+        let job_directory = DIRECTORIES.job;
+        let artifacts_directory = DIRECTORIES.artifacts;
+        let mut artifact_commands = vec![format!("mkdir -p \"{artifacts_directory}/{job_name}\"")];
 
         for artifact in &job.artifacts {
             artifact_commands.push(format!(
-                "cp -R /job/{} \"/artifacts/{}/\"",
-                artifact, job_name
+                "cp -R {job_directory}/{artifact} \"{artifacts_directory}/{job_name}/\""
             ));
         }
 
