@@ -8,7 +8,7 @@ pub struct CiDefinition {
     pub jobs: HashMap<String, Job>,
 }
 
-#[derive(Debug, Default, PartialEq, Clone)]
+#[derive(Debug, Default, PartialEq, Eq, Clone)]
 pub struct Job {
     pub image: String,
     pub script: Vec<String>,

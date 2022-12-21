@@ -23,7 +23,7 @@ fn default_true() -> bool { true }
 
 // Keyword reference: https://docs.gitlab.com/ee/ci/yaml/
 
-#[derive(Deserialize, Serialize, PartialEq, Debug, Default)]
+#[derive(Deserialize, Serialize, PartialEq, Eq, Debug, Default)]
 pub struct GitLabConfiguration {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default: Option<GlobalDefaults>,
@@ -61,7 +61,7 @@ pub struct GitLabConfiguration {
     pub templates: HashMap<String, Job>,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug, Default)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Default)]
 pub struct GlobalDefaults {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub after_script: Option<ListOfStrings>,
@@ -73,10 +73,10 @@ pub struct GlobalDefaults {
     pub image: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub struct ListOfStrings(#[serde(deserialize_with = "string_or_seq_string")] pub Vec<String>);
 
-#[derive(Serialize, Deserialize, PartialEq, Debug, Default)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Default)]
 pub struct Artifacts {
     #[serde(default = "default_artifact_name")]
     pub name: String,
@@ -86,7 +86,7 @@ pub struct Artifacts {
     pub paths: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum When {
     OnSuccess,
@@ -100,7 +100,7 @@ impl Default for When {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(untagged)]
 pub enum Include {
     Local(LocalInclude),
@@ -119,12 +119,12 @@ impl FromStr for Include {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub struct LocalInclude {
     pub local: String,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub struct FileInclude {
     pub project: String,
     #[serde(default = "default_file_include_ref")]
@@ -133,17 +133,17 @@ pub struct FileInclude {
     pub file: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub struct RemoteInclude {
     pub remote: String,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub struct TemplateInclude {
     pub template: String,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug, Default)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Default)]
 pub struct Job {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub after_script: Option<ListOfStrings>,
@@ -169,10 +169,10 @@ pub struct Job {
 }
 
 // Wrapping was necessary to get the custom deserializer work with an `Option`
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub struct OneOrMoreNeeds(#[serde(deserialize_with = "seq_string_or_struct")] pub Vec<Needs>);
 
-#[derive(Serialize, Deserialize, PartialEq, Debug, Default)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Default)]
 pub struct Needs {
     pub job: String,
     #[serde(default = "default_true")]
