@@ -15,13 +15,16 @@ use crate::gitlab::variables::predefined_variables;
 use async_recursion::async_recursion;
 use url::Url;
 
-pub fn read_configuration<R>(reader: R) -> Result<GitLabConfiguration, GitLabError>
+pub fn read_configuration<R>(
+    reader: R,
+    git: &GitDetails,
+) -> Result<GitLabConfiguration, GitLabError>
 where
     R: std::io::Read,
 {
     let mut configuration = parse(reader)?;
 
-    for (key, value) in predefined_variables() {
+    for (key, value) in predefined_variables(git) {
         configuration.variables.push((key, value));
     }
 
@@ -250,17 +253,24 @@ mod tests {
 
     mod test_read_configuration {
         use super::*;
-        use crate::io::docker::DIRECTORIES;
 
         #[test]
         fn adds_predefined_variables_to_global_variables() {
             let empty_content = "";
-            let configuration = read_configuration(empty_content.as_bytes()).unwrap();
+            let empty_git_details = GitDetails::default();
+            let configuration =
+                read_configuration(empty_content.as_bytes(), &empty_git_details).unwrap();
 
-            assert_eq!(
-                configuration.variables,
-                vec![("CI_PROJECT_DIR".into(), DIRECTORIES.job.to_owned())]
-            );
+            let all_variable_names = configuration
+                .variables
+                .iter()
+                .map(|(name, _value)| name.clone())
+                .collect::<Vec<_>>();
+
+            // there are more predefined variables, but in order to not just duplicate the fully
+            // list we're only verifying the existence of _some_ of them.
+            assert!(all_variable_names.contains(&"CI_COMMIT_SHA".into()));
+            assert!(all_variable_names.contains(&"CI_PROJECT_DIR".into()));
         }
     }
 

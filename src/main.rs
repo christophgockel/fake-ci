@@ -10,7 +10,7 @@ use crate::commands::{image, prune, run};
 use crate::core::{convert_configuration, CiDefinition};
 use crate::error::FakeCiError;
 use crate::file::{FileAccess, FileAccessError};
-use crate::git::read_details;
+use crate::git::{read_details, GitDetails};
 use crate::gitlab::configuration::GitLabConfiguration;
 use crate::gitlab::{merge_all, parse_all, read_configuration};
 use crate::io::processes::Processes;
@@ -24,13 +24,13 @@ use std::path::PathBuf;
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let arguments = Arguments::parse();
+    let git_details = read_details()?;
 
     if let Some(command) = arguments.command {
         let file_access = RealFileSystem::default();
-        let git_details = read_details()?;
         let context = Context {
             current_directory: file_access.read_current_directory()?,
-            git_sha: git_details.sha,
+            git_sha: git_details.sha.clone(),
             image_tag: format!("fake-ci:{}", env!("CARGO_PKG_VERSION")),
         };
         let mut prompt = Prompt::default();
@@ -45,7 +45,7 @@ async fn main() -> Result<(), anyhow::Error> {
             )?),
             Command::Prune(_) => Ok(prune::command(&mut prompt, &mut processes)?),
             Command::Run(run) => {
-                let definition = read_ci_definition(arguments.file_path).await?;
+                let definition = read_ci_definition(arguments.file_path, &git_details).await?;
 
                 Ok(run::command(
                     &mut prompt,
@@ -57,7 +57,7 @@ async fn main() -> Result<(), anyhow::Error> {
             }
         }
     } else {
-        match print_merged_configuration(arguments.file_path).await {
+        match print_merged_configuration(arguments.file_path, &git_details).await {
             Ok(_) => Ok(()),
             Err(e) => match e {
                 FakeCiError::File(e) => Err(anyhow!("{}", e)),
@@ -73,8 +73,11 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 }
 
-async fn print_merged_configuration(maybe_file_path: Option<String>) -> Result<(), FakeCiError> {
-    let configuration = read_gitlab_configuration(maybe_file_path).await?;
+async fn print_merged_configuration(
+    maybe_file_path: Option<String>,
+    git: &GitDetails,
+) -> Result<(), FakeCiError> {
+    let configuration = read_gitlab_configuration(maybe_file_path, git).await?;
     let content = serde_yaml::to_string(&configuration).unwrap();
 
     println!("{}", content);
@@ -84,6 +87,7 @@ async fn print_merged_configuration(maybe_file_path: Option<String>) -> Result<(
 
 async fn read_gitlab_configuration(
     maybe_file_path: Option<String>,
+    git: &GitDetails,
 ) -> Result<GitLabConfiguration, FakeCiError> {
     let path_to_config_file = if maybe_file_path.is_none() {
         let mut path = current_dir().map_err(FakeCiError::other)?;
@@ -100,7 +104,7 @@ async fn read_gitlab_configuration(
         .map_err(|e| FileAccessError::cannot_read(&path_to_config_file, e))?;
     let git_details = read_details()?;
 
-    let mut configuration = read_configuration(file)?;
+    let mut configuration = read_configuration(file, git)?;
     let additional_configurations =
         parse_all(&configuration.include, &file_access, &git_details).await?;
     merge_all(additional_configurations, &mut configuration)?;
@@ -108,8 +112,11 @@ async fn read_gitlab_configuration(
     Ok(configuration)
 }
 
-async fn read_ci_definition(maybe_file_path: Option<String>) -> Result<CiDefinition, FakeCiError> {
-    let configuration = read_gitlab_configuration(maybe_file_path).await?;
+async fn read_ci_definition(
+    maybe_file_path: Option<String>,
+    git: &GitDetails,
+) -> Result<CiDefinition, FakeCiError> {
+    let configuration = read_gitlab_configuration(maybe_file_path, git).await?;
     let definition = convert_configuration(&configuration)?;
 
     Ok(definition)

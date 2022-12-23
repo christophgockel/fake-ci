@@ -34,8 +34,10 @@ impl GitError {
 
 #[derive(Default)]
 pub struct GitDetails {
+    pub branch_name: String,
     pub host: String,
     pub sha: String,
+    pub short_sha: String,
 }
 
 pub fn read_details() -> Result<GitDetails, GitError> {
@@ -71,12 +73,22 @@ pub fn read_details() -> Result<GitDetails, GitError> {
     } else {
         return Err(GitError::UnsupportedUrl(content));
     }
-    let sha = cmd!("git", "rev-parse", "--short", "HEAD")
+    let sha = cmd!("git", "rev-parse", "HEAD")
+        .read()
+        .map_err(GitError::sha)?;
+
+    let short_sha = cmd!("git", "rev-parse", "--short", "HEAD")
+        .read()
+        .map_err(GitError::sha)?;
+
+    let branch_name = cmd!("git", "rev-parse", "--abbrev-ref", "HEAD")
         .read()
         .map_err(GitError::sha)?;
 
     Ok(GitDetails {
+        branch_name,
         host: host.unwrap_or_else(|| "".into()),
         sha,
+        short_sha,
     })
 }
