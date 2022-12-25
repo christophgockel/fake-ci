@@ -11,6 +11,8 @@ use thiserror::Error;
 pub enum FileAccessError {
     #[error("cannot read file {0} ({1})")]
     CannotRead(String, #[source] Box<dyn std::error::Error + Send + Sync>),
+    #[error("file not found {0}")]
+    NotFound(String),
     #[cfg(test)]
     #[error("file {0} has not been stubbed")]
     NotStubbed(String),
@@ -37,6 +39,10 @@ impl FileAccessError {
         error: impl Into<Box<dyn std::error::Error + Send + Sync>>,
     ) -> Self {
         FileAccessError::CannotRead(full_url(url), error.into())
+    }
+
+    pub fn not_found<URL: IntoUrl>(url: &URL) -> Self {
+        FileAccessError::NotFound(full_url(url))
     }
 }
 
@@ -81,7 +87,13 @@ impl FileAccess for RealFileSystem {
     ) -> Result<Box<Cursor<Vec<u8>>>, FileAccessError> {
         let response = reqwest::get(url.as_str())
             .await
-            .map_err(|e| FileAccessError::cannot_read_remote(&url, e))?
+            .map_err(|e| FileAccessError::cannot_read_remote(&url, e))?;
+
+        if response.status().as_u16() > 400 {
+            return Err(FileAccessError::not_found(&url));
+        }
+
+        let response = response
             .bytes()
             .await
             .map_err(|e| FileAccessError::cannot_read_remote(&url, e))?;
