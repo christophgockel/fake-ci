@@ -91,27 +91,27 @@ pub enum ResolvePath {
 pub async fn parse_all(
     includes: &Vec<Include>,
     file_access: &impl FileAccess,
-    git_details: &GitDetails,
+    gitlab_host: &String,
 ) -> Result<Vec<GitLabConfiguration>, GitLabError> {
     // The distinction between "local" path resolving and "remote" is that on the initial read
     // through a .gitlab-ci.yml all `include:local` (https://docs.gitlab.com/ee/ci/yaml/#includelocal)
     // includes are to be read from the local file system.
     // Every additional pass from the included configurations is to be resolved as a remote path.
-    parse_all_with_base(includes, file_access, git_details, &ResolvePath::Local).await
+    parse_all_with_base(includes, file_access, gitlab_host, &ResolvePath::Local).await
 }
 
 #[async_recursion(?Send)]
 pub async fn parse_all_with_base(
     includes: &Vec<Include>,
     file_access: &impl FileAccess,
-    git_details: &GitDetails,
+    gitlab_host: &String,
     resolve_path: &ResolvePath,
 ) -> Result<Vec<GitLabConfiguration>, GitLabError> {
     let mut included_configurations = vec![];
 
     for include in includes {
         included_configurations
-            .extend(read_and_parse(include, file_access, git_details, resolve_path).await?);
+            .extend(read_and_parse(include, file_access, gitlab_host, resolve_path).await?);
     }
 
     Ok(included_configurations)
@@ -120,7 +120,7 @@ pub async fn parse_all_with_base(
 async fn read_and_parse(
     include: &Include,
     file_access: &impl FileAccess,
-    git_details: &GitDetails,
+    gitlab_host: &String,
     resolve_path: &ResolvePath,
 ) -> Result<Vec<GitLabConfiguration>, GitLabError> {
     let mut paths_and_configurations = vec![];
@@ -148,7 +148,7 @@ async fn read_and_parse(
             for file in &file_include.file {
                 let url = format!(
                     "{}/{}/-/raw/{}/{}",
-                    &git_details.host, file_include.project, file_include.r#ref, file
+                    gitlab_host, file_include.project, file_include.r#ref, file
                 );
                 let content = file_access
                     .read_remote_file(&url)
@@ -193,7 +193,7 @@ async fn read_and_parse(
         let more_configurations = parse_all_with_base(
             &configuration.include,
             file_access,
-            git_details,
+            gitlab_host,
             &new_resolve_path,
         )
         .await?;
@@ -555,7 +555,7 @@ mod tests {
 
         #[tokio::test]
         async fn resolves_local_files() {
-            let git_dummy = GitDetails::default();
+            let dummy_host = "".to_string();
             let other_content = "
                 variables:
                   OTHER_VARIABLE: true
@@ -567,7 +567,7 @@ mod tests {
             ";
 
             let configuration = parse_and_merge(content).unwrap();
-            let additional_configurations = parse_all(&configuration.include, &files, &git_dummy)
+            let additional_configurations = parse_all(&configuration.include, &files, &dummy_host)
                 .await
                 .unwrap();
 
@@ -576,7 +576,7 @@ mod tests {
 
         #[tokio::test]
         async fn resolves_multiple_local_files() {
-            let git_dummy = GitDetails::default();
+            let dummy_host = "".to_string();
             let file_a_content = "
                 variables:
                   FILE_A: value a
@@ -596,7 +596,7 @@ mod tests {
             ";
 
             let configuration = parse_and_merge(content).unwrap();
-            let additional_configurations = parse_all(&configuration.include, &files, &git_dummy)
+            let additional_configurations = parse_all(&configuration.include, &files, &dummy_host)
                 .await
                 .unwrap();
 
@@ -605,7 +605,7 @@ mod tests {
 
         #[tokio::test]
         async fn resolves_nested_local_files() {
-            let git_dummy = GitDetails::default();
+            let dummy_host = "".to_string();
             let first_content = "
                 include:
                   local: second-file.yml
@@ -626,7 +626,7 @@ mod tests {
             ";
 
             let configuration = parse_and_merge(content).unwrap();
-            let additional_configurations = parse_all(&configuration.include, &files, &git_dummy)
+            let additional_configurations = parse_all(&configuration.include, &files, &dummy_host)
                 .await
                 .unwrap();
 
@@ -635,10 +635,7 @@ mod tests {
 
         #[tokio::test]
         async fn resolves_gitlab_project_files() {
-            let git_details = GitDetails {
-                host: "https://example-gitlab.com".into(),
-                ..Default::default()
-            };
+            let gitlab_host = "https://example-gitlab.com".to_string();
             let file_a_content = "
                 variables:
                   FILE_A: value a
@@ -667,7 +664,7 @@ mod tests {
             ";
 
             let configuration = parse_and_merge(content).unwrap();
-            let additional_configurations = parse_all(&configuration.include, &files, &git_details)
+            let additional_configurations = parse_all(&configuration.include, &files, &gitlab_host)
                 .await
                 .unwrap();
 
@@ -676,7 +673,7 @@ mod tests {
 
         #[tokio::test]
         async fn resolves_remote_files() {
-            let git_dummy = GitDetails::default();
+            let dummy_host = "".to_string();
             let file_content = "
                 variables:
                   FILE: value
@@ -690,7 +687,7 @@ mod tests {
             ";
 
             let configuration = parse_and_merge(content).unwrap();
-            let additional_configurations = parse_all(&configuration.include, &files, &git_dummy)
+            let additional_configurations = parse_all(&configuration.include, &files, &dummy_host)
                 .await
                 .unwrap();
 
@@ -699,7 +696,7 @@ mod tests {
 
         #[tokio::test]
         async fn resolves_template_files() {
-            let git_dummy = GitDetails::default();
+            let dummy_host = "".to_string();
             let file_content = "
                 variables:
                   FILE: value
@@ -713,7 +710,7 @@ mod tests {
             ";
 
             let configuration = parse_and_merge(content).unwrap();
-            let additional_configurations = parse_all(&configuration.include, &files, &git_dummy)
+            let additional_configurations = parse_all(&configuration.include, &files, &dummy_host)
                 .await
                 .unwrap();
 
@@ -722,10 +719,7 @@ mod tests {
 
         #[tokio::test]
         async fn resolves_nested_remote_files_as_local_to_the_host() {
-            let git_details = GitDetails {
-                host: "https://example-gitlab.com".into(),
-                ..Default::default()
-            };
+            let gitlab_host = "https://example-gitlab.com".to_string();
             let first_include = "
                 include:
                   local: local-file.yml
@@ -746,7 +740,7 @@ mod tests {
             ";
 
             let configuration = parse_and_merge(local_content).unwrap();
-            let additional_configurations = parse_all(&configuration.include, &files, &git_details)
+            let additional_configurations = parse_all(&configuration.include, &files, &gitlab_host)
                 .await
                 .unwrap();
 

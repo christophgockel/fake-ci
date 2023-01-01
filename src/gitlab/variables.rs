@@ -71,7 +71,6 @@ mod tests {
             branch_name: "branch-name".to_string(),
             sha: "1234567890abcde".to_string(),
             short_sha: "12345678".to_string(),
-            ..Default::default()
         };
         let variables = predefined_variables(&git);
 

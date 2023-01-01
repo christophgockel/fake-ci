@@ -35,13 +35,14 @@ async fn main() -> Result<(), anyhow::Error> {
     path_to_settings_file.push(".fake-ci.yml");
 
     if let Some(command) = arguments.command {
-        let _settings = match load_settings(path_to_settings_file, &file_access).await? {
+        let settings = match load_settings(path_to_settings_file, &file_access).await? {
             LoadedSettings::FromFile(s) => {
                 prompt.info("Using settings from .fake-ci.yml");
                 s
             }
             LoadedSettings::Default(s) => s,
         };
+        let gitlab_host = settings.gitlab.host.clone();
         let context = Context {
             current_directory: file_access.read_current_directory()?,
             git_sha: git_details.sha.clone(),
@@ -58,7 +59,8 @@ async fn main() -> Result<(), anyhow::Error> {
             )?),
             Command::Prune(_) => Ok(prune::command(&mut prompt, &mut processes)?),
             Command::Run(run) => {
-                let definition = read_ci_definition(arguments.file_path, &git_details).await?;
+                let definition =
+                    read_ci_definition(arguments.file_path, &git_details, &gitlab_host).await?;
 
                 Ok(run::command(
                     &mut prompt,
@@ -70,7 +72,17 @@ async fn main() -> Result<(), anyhow::Error> {
             }
         }
     } else {
-        match print_merged_configuration(arguments.file_path, &git_details).await {
+        let settings = match load_settings(".fake-ci.yml", &file_access).await? {
+            LoadedSettings::FromFile(s) | LoadedSettings::Default(s) => s,
+        };
+
+        match print_merged_configuration(
+            arguments.file_path,
+            &git_details,
+            &settings.gitlab.host.clone(),
+        )
+        .await
+        {
             Ok(_) => Ok(()),
             Err(e) => match e {
                 FakeCiError::File(e) => Err(anyhow!("{}", e)),
@@ -89,8 +101,9 @@ async fn main() -> Result<(), anyhow::Error> {
 async fn print_merged_configuration(
     maybe_file_path: Option<String>,
     git: &GitDetails,
+    gitlab_host: &String,
 ) -> Result<(), FakeCiError> {
-    let configuration = read_gitlab_configuration(maybe_file_path, git).await?;
+    let configuration = read_gitlab_configuration(maybe_file_path, git, gitlab_host).await?;
     let content = serde_yaml::to_string(&configuration).unwrap();
 
     println!("{}", content);
@@ -101,6 +114,7 @@ async fn print_merged_configuration(
 async fn read_gitlab_configuration(
     maybe_file_path: Option<String>,
     git: &GitDetails,
+    gitlab_host: &String,
 ) -> Result<GitLabConfiguration, FakeCiError> {
     let path_to_config_file = if maybe_file_path.is_none() {
         let mut path = current_dir().map_err(FakeCiError::other)?;
@@ -115,11 +129,10 @@ async fn read_gitlab_configuration(
     let file_access = RealFileSystem::default();
     let file = std::fs::File::open(&path_to_config_file)
         .map_err(|e| FileAccessError::cannot_read(&path_to_config_file, e))?;
-    let git_details = read_details()?;
 
     let mut configuration = read_configuration(file, git)?;
     let additional_configurations =
-        parse_all(&configuration.include, &file_access, &git_details).await?;
+        parse_all(&configuration.include, &file_access, gitlab_host).await?;
     merge_all(additional_configurations, &mut configuration)?;
 
     Ok(configuration)
@@ -128,8 +141,9 @@ async fn read_gitlab_configuration(
 async fn read_ci_definition(
     maybe_file_path: Option<String>,
     git: &GitDetails,
+    gitlab_host: &String,
 ) -> Result<CiDefinition, FakeCiError> {
-    let configuration = read_gitlab_configuration(maybe_file_path, git).await?;
+    let configuration = read_gitlab_configuration(maybe_file_path, git, gitlab_host).await?;
     let definition = convert_configuration(&configuration)?;
 
     Ok(definition)
