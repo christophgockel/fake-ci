@@ -5,6 +5,7 @@ pub mod file;
 mod git;
 mod gitlab;
 mod io;
+mod settings;
 
 use crate::commands::{image, prune, run};
 use crate::core::{convert_configuration, CiDefinition};
@@ -14,7 +15,9 @@ use crate::git::{read_details, GitDetails};
 use crate::gitlab::configuration::GitLabConfiguration;
 use crate::gitlab::{merge_all, parse_all, read_configuration};
 use crate::io::processes::Processes;
-use crate::io::prompt::Prompt;
+use crate::io::prompt::{Prompt, Prompts};
+use crate::settings::structure::Settings;
+use crate::settings::{load_settings, LoadedSettings};
 use anyhow::anyhow;
 use clap::{Parser, Subcommand};
 use file::RealFileSystem;
@@ -25,15 +28,25 @@ use std::path::PathBuf;
 async fn main() -> Result<(), anyhow::Error> {
     let arguments = Arguments::parse();
     let git_details = read_details()?;
+    let file_access = RealFileSystem::default();
+    let mut prompt = Prompt::default();
+    let mut path_to_settings_file = current_dir().map_err(FakeCiError::other)?;
+
+    path_to_settings_file.push(".fake-ci.yml");
 
     if let Some(command) = arguments.command {
-        let file_access = RealFileSystem::default();
+        let _settings = match load_settings(path_to_settings_file, &file_access).await? {
+            LoadedSettings::FromFile(s) => {
+                prompt.info("Using settings from .fake-ci.yml");
+                s
+            }
+            LoadedSettings::Default(s) => s,
+        };
         let context = Context {
             current_directory: file_access.read_current_directory()?,
             git_sha: git_details.sha.clone(),
             image_tag: format!("fake-ci:{}", env!("CARGO_PKG_VERSION")),
         };
-        let mut prompt = Prompt::default();
         let mut processes = Processes::default();
 
         match command {
