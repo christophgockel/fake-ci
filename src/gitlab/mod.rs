@@ -31,6 +31,22 @@ where
     Ok(configuration)
 }
 
+pub async fn read_gitlab_configuration(
+    path_to_config_file: String,
+    file_access: &impl FileAccess,
+    git: &GitDetails,
+    gitlab_host: &String,
+) -> Result<GitLabConfiguration, GitLabError> {
+    let file = file_access.read_local_file(path_to_config_file)?;
+
+    let mut configuration = read_configuration(file, git)?;
+    let additional_configurations =
+        parse_all(&configuration.include, file_access, gitlab_host).await?;
+    merge_all(additional_configurations, &mut configuration)?;
+
+    Ok(configuration)
+}
+
 fn parse<R>(reader: R) -> Result<GitLabConfiguration, GitLabError>
 where
     R: std::io::Read,

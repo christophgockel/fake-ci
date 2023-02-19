@@ -1,6 +1,9 @@
 use crate::error::FakeCiError;
+use crate::file::FileAccess;
+use crate::git::GitDetails;
 use crate::gitlab;
 use crate::gitlab::configuration::{GitLabConfiguration, ListOfStrings, OneOrMoreNeeds};
+use crate::gitlab::read_gitlab_configuration;
 use std::collections::HashMap;
 
 #[derive(Default)]
@@ -17,9 +20,20 @@ pub struct Job {
     pub required_artifacts: HashMap<String, Vec<String>>,
 }
 
-pub fn convert_configuration(
-    configuration: &GitLabConfiguration,
+pub async fn read_ci_definition(
+    path_to_config_file: String,
+    file_access: &impl FileAccess,
+    git: &GitDetails,
+    gitlab_host: &String,
 ) -> Result<CiDefinition, FakeCiError> {
+    let configuration =
+        read_gitlab_configuration(path_to_config_file, file_access, git, gitlab_host).await?;
+    let definition = convert_configuration(&configuration)?;
+
+    Ok(definition)
+}
+
+fn convert_configuration(configuration: &GitLabConfiguration) -> Result<CiDefinition, FakeCiError> {
     let jobs = configuration
         .jobs
         .iter()
