@@ -44,8 +44,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
 async fn run(arguments: Arguments) -> Result<(), FakeCiError> {
     let git_details = read_details()?;
-    let file_access = RealFileSystem::default();
-    let mut prompt = Prompt::default();
+    let file_access = RealFileSystem;
+    let mut prompt = Prompt::new();
     let mut path_to_settings_file = current_dir().map_err(FakeCiError::other)?;
     let path_to_configuration_file = match arguments.configuration_file {
         None => {
@@ -71,7 +71,7 @@ async fn run(arguments: Arguments) -> Result<(), FakeCiError> {
         git_sha: git_details.sha.clone(),
         image_tag: format!("fake-ci:{}", env!("CARGO_PKG_VERSION")),
     };
-    let mut processes = Processes::default();
+    let mut processes = Processes::new();
 
     match arguments.command {
         Command::Image(image) => Ok(image::command(

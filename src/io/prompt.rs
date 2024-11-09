@@ -11,10 +11,16 @@ pub trait Prompts {
 }
 
 #[cfg(not(test))]
-#[derive(Default)]
 pub struct Prompt;
 #[cfg(test)]
 pub use tests::FakePrompt as Prompt;
+
+#[cfg(not(test))]
+impl Prompt {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
 
 #[cfg(not(test))]
 impl Prompts for Prompt {
@@ -50,21 +56,18 @@ pub mod tests {
         pub response: PromptResponse,
     }
 
-    #[derive(Default)]
     pub struct SpyPrompt {
         pub info_call_count: u32,
     }
 
-    impl Default for FakePrompt {
-        fn default() -> Self {
+    impl FakePrompt {
+        pub fn new() -> Self {
             Self {
                 has_been_asked_to_confirm: false,
                 response: PromptResponse::No,
             }
         }
-    }
 
-    impl FakePrompt {
         pub fn always_confirming() -> Self {
             Self {
                 has_been_asked_to_confirm: false,
@@ -87,6 +90,12 @@ pub mod tests {
         }
 
         fn info(&mut self, _message: &str) {}
+    }
+
+    impl SpyPrompt {
+        pub fn new() -> Self {
+            Self { info_call_count: 0 }
+        }
     }
 
     impl Prompts for SpyPrompt {

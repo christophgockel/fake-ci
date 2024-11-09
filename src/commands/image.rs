@@ -35,7 +35,7 @@ mod tests {
 
     #[test]
     fn provides_info_message_when_image_is_up_to_date() {
-        let mut prompt = SpyPrompt::default();
+        let mut prompt = SpyPrompt::new();
         let mut processes = ProcessesSpy::default();
         let context = Context::default();
         let default_args = Image::default();
@@ -47,7 +47,7 @@ mod tests {
 
     #[test]
     fn builds_new_image_when_it_needs_to_be_built() {
-        let mut prompt = SpyPrompt::default();
+        let mut prompt = SpyPrompt::new();
         let mut processes = ProcessesSpy::with_image_to_be_built();
         let context = Context::default();
         let default_args = Image::default();
@@ -59,7 +59,7 @@ mod tests {
 
     #[test]
     fn provides_info_message_when_image_is_going_to_be_built() {
-        let mut prompt = SpyPrompt::default();
+        let mut prompt = SpyPrompt::new();
         let mut processes = ProcessesSpy::with_image_to_be_built();
         let context = Context::default();
         let default_args = Image::default();
@@ -71,7 +71,7 @@ mod tests {
 
     #[test]
     fn force_argument_rebuilds_image_even_if_it_exists_already() {
-        let mut prompt = SpyPrompt::default();
+        let mut prompt = SpyPrompt::new();
         let mut processes = ProcessesSpy::default();
         let context = Context::default();
         let args = Image { force: true };

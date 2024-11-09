@@ -68,7 +68,7 @@ mod tests {
     #[test]
     fn returns_error_if_job_name_is_unknown() {
         let mut prompt = FakePrompt::always_confirming();
-        let mut processes = ProcessesSpy::default();
+        let mut processes = ProcessesSpy::new();
         let context = Context::default();
         let definition = CiDefinition::default();
 
@@ -85,7 +85,7 @@ mod tests {
 
     #[test]
     fn checks_if_image_is_available_and_builds_when_it_is_not() {
-        let mut prompt = SpyPrompt::default();
+        let mut prompt = SpyPrompt::new();
         let mut processes = ProcessesSpy::with_image_to_be_built();
         let context = Context::default();
         let job = Job::default();
@@ -109,7 +109,7 @@ mod tests {
     #[test]
     fn valid_jobs_are_passed_to_be_executed() {
         let mut prompt = FakePrompt::always_confirming();
-        let mut processes = ProcessesSpy::default();
+        let mut processes = ProcessesSpy::new();
         let context = Context::default();
         let job = Job::default();
         let definition = CiDefinition {
@@ -137,7 +137,7 @@ mod tests {
     #[test]
     fn prepares_artifacts_when_job_requires_them() {
         let mut prompt = FakePrompt::always_confirming();
-        let mut processes = ProcessesSpy::default();
+        let mut processes = ProcessesSpy::new();
         let context = Context::default();
         let job = Job {
             required_artifacts: HashMap::from([("other-job".into(), vec!["file-1".into()])]),
@@ -162,7 +162,7 @@ mod tests {
     #[test]
     fn extracts_artifacts_when_job_defines_some() {
         let mut prompt = FakePrompt::always_confirming();
-        let mut processes = ProcessesSpy::default();
+        let mut processes = ProcessesSpy::new();
         let context = Context::default();
         let job = Job {
             artifacts: vec!["file-1".into()],

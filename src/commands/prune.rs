@@ -54,7 +54,7 @@ mod tests {
 
     #[test]
     fn provides_info_message_for_each_prune_step_when_confirmed() {
-        let mut prompt = SpyPrompt::default();
+        let mut prompt = SpyPrompt::new();
         let mut processes = ProcessesSpy::default();
 
         command(&mut prompt, &mut processes).unwrap();

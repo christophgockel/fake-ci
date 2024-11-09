@@ -51,10 +51,16 @@ pub trait ProcessesToExecute {
 }
 
 #[cfg(not(test))]
-#[derive(Default)]
 pub struct Processes;
 #[cfg(test)]
 pub use tests::ProcessesSpy as Processes;
+
+#[cfg(not(test))]
+impl Processes {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
 
 #[cfg(not(test))]
 impl ProcessesToExecute for Processes {
@@ -213,6 +219,10 @@ pub mod tests {
     }
 
     impl ProcessesSpy {
+        pub fn new() -> Self {
+            ProcessesSpy::default()
+        }
+
         pub fn with_image_to_be_built() -> Self {
             Self {
                 image_needs_to_be_built: true,
