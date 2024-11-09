@@ -3,6 +3,7 @@ use std::io::Error;
 
 const DOCKERFILE_CONTENT: &str = include_str!("../../Dockerfile");
 
+#[allow(dead_code)]
 pub struct Directories {
     pub checkout: &'static str,
     pub project: &'static str,
@@ -39,7 +40,7 @@ pub fn build_image(tag: &str) -> Result<(), Error> {
     Ok(())
 }
 
-#[allow(dead_code)]
+#[cfg(not(test))]
 pub fn prune_containers() -> Result<usize, Error> {
     let container_output = cmd!(
         "docker",
@@ -60,7 +61,7 @@ pub fn prune_containers() -> Result<usize, Error> {
     Ok(container_lines)
 }
 
-#[allow(dead_code)]
+#[cfg(not(test))]
 pub fn prune_volumes() -> Result<usize, Error> {
     let volume_output = cmd!("docker", "volume", "ls", "--filter", "name=fake", "--quiet")
         .pipe(cmd!("xargs", "docker", "volume", "rm", "-f"))
@@ -71,7 +72,7 @@ pub fn prune_volumes() -> Result<usize, Error> {
     Ok(volume_lines)
 }
 
-#[allow(dead_code)]
+#[cfg(not(test))]
 pub fn prune_images() -> Result<usize, Error> {
     let image_output = cmd!(
         "docker",
@@ -89,7 +90,7 @@ pub fn prune_images() -> Result<usize, Error> {
     Ok(image_lines)
 }
 
-#[allow(dead_code)]
+#[cfg(not(test))]
 pub fn prune_container(container_name: &str) -> Result<(), Error> {
     cmd!(
         "docker",
@@ -105,7 +106,7 @@ pub fn prune_container(container_name: &str) -> Result<(), Error> {
     Ok(())
 }
 
-#[allow(dead_code)]
+#[cfg(not(test))]
 pub fn start_checkout_container(
     container_name: &str,
     image_tag: &str,
@@ -133,14 +134,14 @@ pub fn start_checkout_container(
     Ok(container_id)
 }
 
-#[allow(dead_code)]
+#[cfg(not(test))]
 pub fn execute_commands(container_id: &str, commands: &str) -> Result<(), Error> {
     cmd!("docker", "exec", container_id, "sh", "-c", commands).run()?;
 
     Ok(())
 }
 
-#[allow(dead_code)]
+#[cfg(not(test))]
 pub fn start_job_container(
     container_name: &str,
     image_tag: &str,
