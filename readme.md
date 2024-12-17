@@ -21,7 +21,7 @@ Eventually support for more CI/CD providers is intended like GitHub Actions, Cir
 ### Development and Test Setup
 
 During development there are a lot of hard coded assumptions in the individual scripts.
-This is intentional and helps validating ideas while not having to implement a lot of logic upfront that might not be necessary after learning more about it.
+This is intentional and helps to validate ideas while not having to implement a lot of logic upfront that might not be necessary after learning more about it.
 
 However, ultimately any hard coded parts need to be replaced with logic depending on a real `.gitlab-ci.yml` file.
 To aid development and testing you can execute the script `initialise-example-repo.sh` that's in this repository.
@@ -46,7 +46,7 @@ There are some tests that verify the overall functionality of the `fake-ci` bina
 These tests are located in the top-level `tests` directory.
 
 
-##### Docker
+#### Docker
 
 Some tests interact directly with Docker and are separated by a feature flag which is disabled by default when running `cargo test`.
 
@@ -54,6 +54,15 @@ Running the Docker specific tests can be done via:
 
 ```
 cargo test docker --features docker_tests
+```
+
+
+#### End-to-End Tests
+
+The end-to-end tests require Docker and can be run via:
+
+```
+cargo test --test end_to_end_tests --features docker_tests
 ```
 
 
